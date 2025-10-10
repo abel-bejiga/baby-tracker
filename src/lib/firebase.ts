@@ -3,13 +3,13 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAqHzKgqWO4vLC4reBUlatyJKLSMK3ELw0",
-  authDomain: "baby-tracker-dff08.firebaseapp.com",
-  projectId: "baby-tracker-dff08",
-  storageBucket: "baby-tracker-dff08.firebasestorage.app",
-  messagingSenderId: "189009041669",
-  appId: "1:189009041669:web:9db702782bded9f74f3f6c",
-  measurementId: "G-JHDNRL0K06"
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_APIKEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDERID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APPID,
+  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENTID
 };
 
 // Initialize Firebase

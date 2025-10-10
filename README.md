@@ -68,6 +68,8 @@ A beautiful, minimal baby tracking application built with Next.js 15, TypeScript
      messagingSenderId: "your-sender-id",
      appId: "your-app-id"
    };
+
+   **Even easier -- edit .env.local values and there wouldnt be a need to change the code**
    ```
 
 4. **Run the development server**

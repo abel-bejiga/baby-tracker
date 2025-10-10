@@ -57,6 +57,9 @@ export interface CalendarEvent {
     date: string;
     notes?: string;
     questions?: string;
+    location?: string;
+    doctorName?: string;
+    hospitalName?: string;
   }): CalendarEvent => {
     const startDate = new Date(appointment.date);
     const endDate = new Date(startDate.getTime() + 60 * 60 * 1000); // 1 hour duration
@@ -64,6 +67,9 @@ export interface CalendarEvent {
     const description = [
       appointment.notes ? `Doctor's Notes: ${appointment.notes}` : '',
       appointment.questions ? `Questions: ${appointment.questions}` : '',
+      appointment.location ? `Location: ${appointment.location}` : '',
+      appointment.doctorName ? `Doctor: ${appointment.doctorName}` : '',
+      appointment.hospitalName ? `Hospital: ${appointment.hospitalName}` : '',
       'Created with Baby Tracker by abelbejiga.com'
     ].filter(Boolean).join('\n\n');
   

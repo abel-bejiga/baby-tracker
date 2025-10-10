@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,6 +51,8 @@ import { db } from "@/lib/firebase";
 import { addToAppleCalendar, createDoctorAppointmentEvent } from "@/lib/calendar";
 import { AnimatedHamburger } from "@/components/ui/animated-hamburger";
 import { useToast } from "@/hooks/use-toast";
+import { useBabyTrackerLocalStorage, defaultFormData } from "@/hooks/use-baby-tracker-local-storage";
+import { useClickOutside } from "@/hooks/use-click-outside";
 import Link from "next/link";
 
 interface BabyActivity {
@@ -68,68 +70,37 @@ export default function Home() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<BabyActivity | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // Form states
-  const [feedingData, setFeedingData] = useState({ amount: '', notes: '', timestamp: '' });
-  const [sleepData, setSleepData] = useState({ duration: '', notes: '', startTime: '', endTime: '', timestamp: '' });
-  const [diaperData, setDiaperData] = useState({ type: '', notes: '', timestamp: '' });
-  const [poopData, setPoopData] = useState({ consistency: '', notes: '', timestamp: '' });
-  const [doctorData, setDoctorData] = useState({
-    appointmentType: '',
-    notes: '',
-    questions: '',
-    date: '',
-    location: '',
-    doctorName: '',
-    hospitalName: ''
-  });
-  const [temperatureData, setTemperatureData] = useState({
-    temperature: '',
-    unit: 'celsius', // celsius or fahrenheit
-    notes: '',
-    timestamp: ''
-  });
-  const [medicationData, setMedicationData] = useState({
-    medicationName: '',
-    dosage: '',
-    frequency: '',
-    duration: '',
-    notes: '',
-    timestamp: ''
-  });
-  const [vaccinationData, setVaccinationData] = useState({
-    vaccineName: '',
-    doseNumber: '',
-    administeredBy: '',
-    nextDueDate: '',
-    notes: '',
-    timestamp: ''
-  });
-  const [milestoneData, setMilestoneData] = useState({
-    milestoneType: '',
-    description: '',
-    dateAchieved: '',
-    notes: '',
-    timestamp: ''
-  });
-  const [growthData, setGrowthData] = useState({
-    weight: '', // in kg
-    height: '', // in cm
-    headCircumference: '', // in cm
-    date: '',
-    notes: '',
-    timestamp: ''
-  });
-  const [symptomsData, setSymptomsData] = useState({
-    symptomType: '',
-    severity: 'mild', // mild, moderate, severe
-    description: '',
-    startDate: '',
-    endDate: '',
-    notes: '',
-    timestamp: ''
-  });
+  // Form states with localStorage persistence
+  const { formData, updateFormData, getFormData, clearFormData }: any = useBabyTrackerLocalStorage();
+
+  // Helper functions for updating form data
+  const updateFeedingData = (data: Partial<typeof feedingData>) => updateFormData('feeding', data);
+  const updateSleepData = (data: Partial<typeof sleepData>) => updateFormData('sleep', data);
+  const updateDiaperData = (data: Partial<typeof diaperData>) => updateFormData('diaper', data);
+  const updatePoopData = (data: Partial<typeof poopData>) => updateFormData('poop', data);
+  const updateDoctorData = (data: Partial<typeof doctorData>) => updateFormData('doctor', data);
+  const updateTemperatureData = (data: Partial<typeof temperatureData>) => updateFormData('temperature', data);
+  const updateMedicationData = (data: Partial<typeof medicationData>) => updateFormData('medication', data);
+  const updateVaccinationData = (data: Partial<typeof vaccinationData>) => updateFormData('vaccination', data);
+  const updateMilestoneData = (data: Partial<typeof milestoneData>) => updateFormData('milestone', data);
+  const updateGrowthData = (data: Partial<typeof growthData>) => updateFormData('growth', data);
+  const updateSymptomsData = (data: Partial<typeof symptomsData>) => updateFormData('symptoms', data);
+
+  // Extract form data for easier access
+  const feedingData = getFormData('feeding');
+  const sleepData = getFormData('sleep');
+  const diaperData = getFormData('diaper');
+  const poopData = getFormData('poop');
+  const doctorData = getFormData('doctor');
+  const temperatureData = getFormData('temperature');
+  const medicationData = getFormData('medication');
+  const vaccinationData = getFormData('vaccination');
+  const milestoneData = getFormData('milestone');
+  const growthData = getFormData('growth');
+  const symptomsData = getFormData('symptoms');
 
   // Form errors
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -287,7 +258,9 @@ export default function Home() {
       }
 
       setIsDialogOpen(false);
+      setExpandedCard(null);
       resetForms();
+      clearFormData(type);
 
       // Show success toast
       toast({
@@ -324,7 +297,9 @@ export default function Home() {
 
       setEditingActivity(null);
       setIsDialogOpen(false);
+      setExpandedCard(null);
       resetForms();
+      clearFormData(type);
 
       // Show success toast
       toast({
@@ -369,11 +344,11 @@ export default function Home() {
     const currentDateTime = now.toISOString().slice(0, 16);
     const currentTime = now.toTimeString().slice(0, 5);
 
-    setFeedingData({ amount: '', notes: '', timestamp: currentDateTime });
-    setSleepData({ duration: '', notes: '', startTime: currentTime, endTime: '', timestamp: currentDateTime });
-    setDiaperData({ type: '', notes: '', timestamp: currentDateTime });
-    setPoopData({ consistency: '', notes: '', timestamp: currentDateTime });
-    setDoctorData({
+    updateFormData('feeding', { amount: '', notes: '', timestamp: currentDateTime });
+    updateFormData('sleep', { duration: '', notes: '', startTime: currentTime, endTime: '', timestamp: currentDateTime });
+    updateFormData('diaper', { type: '', notes: '', timestamp: currentDateTime });
+    updateFormData('poop', { consistency: '', notes: '', timestamp: currentDateTime });
+    updateFormData('doctor', {
       appointmentType: '',
       notes: '',
       questions: '',
@@ -382,13 +357,13 @@ export default function Home() {
       doctorName: '',
       hospitalName: ''
     });
-    setTemperatureData({
+    updateFormData('temperature', {
       temperature: '',
       unit: 'celsius',
       notes: '',
       timestamp: currentDateTime
     });
-    setMedicationData({
+    updateFormData('medication', {
       medicationName: '',
       dosage: '',
       frequency: '',
@@ -396,7 +371,7 @@ export default function Home() {
       notes: '',
       timestamp: currentDateTime
     });
-    setVaccinationData({
+    updateFormData('vaccination', {
       vaccineName: '',
       doseNumber: '',
       administeredBy: '',
@@ -404,14 +379,14 @@ export default function Home() {
       notes: '',
       timestamp: currentDateTime
     });
-    setMilestoneData({
+    updateFormData('milestone', {
       milestoneType: '',
       description: '',
       dateAchieved: '',
       notes: '',
       timestamp: currentDateTime
     });
-    setGrowthData({
+    updateFormData('growth', {
       weight: '',
       height: '',
       headCircumference: '',
@@ -419,7 +394,7 @@ export default function Home() {
       notes: '',
       timestamp: currentDateTime
     });
-    setSymptomsData({
+    updateFormData('symptoms', {
       symptomType: '',
       severity: 'mild',
       description: '',
@@ -431,21 +406,54 @@ export default function Home() {
     setErrors({});
   };
 
+  const handleCardClick = (activityType: string) => {
+    if (expandedCard === activityType) {
+      setExpandedCard(null);
+    } else {
+      setSelectedActivity(activityType);
+      setEditingActivity(null);
+      setExpandedCard(activityType);
+    }
+  };
+
+  const handleCardHeaderClick = (e: React.MouseEvent, activityType: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleCardClick(activityType);
+  };
+
+  const handleFormClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const closeExpandedCard = () => {
+    setExpandedCard(null);
+  };
+
+  // Use click outside hook to close expanded card when clicking outside
+  const expandedCardRef = useClickOutside(() => {
+    if (expandedCard) {
+      closeExpandedCard();
+    }
+  });
+
   const openEditDialog = (activity: BabyActivity) => {
     setEditingActivity(activity);
     setSelectedActivity(activity.type);
+    setExpandedCard(activity.type);
 
     // Populate form with existing data
     switch (activity.type) {
       case 'feeding':
-        setFeedingData({
+        updateFeedingData({
           amount: activity.details.amount || '',
           notes: activity.details.notes || '',
           timestamp: activity.timestamp.toISOString().slice(0, 16)
         });
         break;
       case 'sleep':
-        setSleepData({
+        updateSleepData({
           duration: activity.details.duration || '',
           notes: activity.details.notes || '',
           startTime: activity.details.startTime || '',
@@ -454,21 +462,21 @@ export default function Home() {
         });
         break;
       case 'diaper':
-        setDiaperData({
+        updateDiaperData({
           type: activity.details.type || '',
           notes: activity.details.notes || '',
           timestamp: activity.timestamp.toISOString().slice(0, 16)
         });
         break;
       case 'poop':
-        setPoopData({
+        updatePoopData({
           consistency: activity.details.consistency || '',
           notes: activity.details.notes || '',
           timestamp: activity.timestamp.toISOString().slice(0, 16)
         });
         break;
       case 'doctor':
-        setDoctorData({
+        updateDoctorData({
           appointmentType: activity.details.appointmentType || '',
           notes: activity.details.notes || '',
           questions: activity.details.questions || '',
@@ -481,6 +489,274 @@ export default function Home() {
     }
 
     setIsDialogOpen(true);
+  };
+
+  const renderActivityForm = (activityType: string) => {
+    switch (activityType) {
+      case 'feeding':
+        return (
+          <div className="space-y-4">
+            <div>
+              <Label className="pb-1" htmlFor="amount">Amount (oz) *</Label>
+              <Input
+                id="amount"
+                type="number"
+                step="0.1"
+                value={feedingData.amount}
+                onChange={(e) => updateFeedingData({ amount: e.target.value })}
+                placeholder="Enter amount in ounces"
+                className={errors.amount ? 'border-red-500' : ''}
+              />
+              {errors.amount && <p className="text-red-500 text-sm mt-1">{errors.amount}</p>}
+            </div>
+            <div>
+              <Label className="pb-1" htmlFor="feeding-time">Time</Label>
+              <Input
+                id="feeding-time"
+                type="datetime-local"
+                value={feedingData.timestamp}
+                onChange={(e) => updateFeedingData({ timestamp: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label className="pb-1" htmlFor="feeding-notes">Notes</Label>
+              <Textarea
+                id="feeding-notes"
+                value={feedingData.notes}
+                onChange={(e) => updateFeedingData({ notes: e.target.value })}
+                placeholder="Add any notes about the feeding..."
+              />
+            </div>
+            <Button
+              onClick={() => editingActivity
+                ? updateActivity(editingActivity.id, 'feeding', feedingData)
+                : addActivity('feeding', feedingData)
+              }
+              className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {editingActivity ? 'Update' : 'Add'} Feeding Entry
+            </Button>
+          </div>
+        );
+
+      case 'sleep':
+        return (
+          <div className="space-y-4">
+            <div>
+              <Label className="pb-1" htmlFor="duration">Duration (hours) *</Label>
+              <Input
+                id="duration"
+                type="number"
+                step="0.1"
+                value={sleepData.duration}
+                onChange={(e) => updateSleepData({ duration: e.target.value })}
+                placeholder="Enter sleep duration"
+                className={errors.duration ? 'border-red-500' : ''}
+              />
+              {errors.duration && <p className="text-red-500 text-sm mt-1">{errors.duration}</p>}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="pb-1" htmlFor="start-time">Start Time</Label>
+                <Input
+                  id="start-time"
+                  type="time"
+                  value={sleepData.startTime}
+                  onChange={(e) => updateSleepData({ startTime: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label className="pb-1" htmlFor="end-time">End Time</Label>
+                <Input
+                  id="end-time"
+                  type="time"
+                  value={sleepData.endTime}
+                  onChange={(e) => updateSleepData({ endTime: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="pb-1" htmlFor="sleep-time">Date</Label>
+              <Input
+                id="sleep-time"
+                type="datetime-local"
+                value={sleepData.timestamp}
+                onChange={(e) => updateSleepData({ timestamp: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label className="pb-1" htmlFor="sleep-notes">Notes</Label>
+              <Textarea
+                id="sleep-notes"
+                value={sleepData.notes}
+                onChange={(e) => updateSleepData({ notes: e.target.value })}
+                placeholder="Add any notes about the sleep..."
+              />
+            </div>
+            <Button
+              onClick={() => editingActivity
+                ? updateActivity(editingActivity.id, 'sleep', sleepData)
+                : addActivity('sleep', sleepData)
+              }
+              className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {editingActivity ? 'Update' : 'Add'} Sleep Entry
+            </Button>
+          </div>
+        );
+
+      case 'diaper':
+        return (
+          <div className="space-y-4">
+            <div>
+              <Label className="pb-1" htmlFor="diaper-type">Type *</Label>
+              <Select value={diaperData.type} onValueChange={(value) => updateDiaperData({ type: value })}>
+                <SelectTrigger className={errors.type ? 'border-red-500' : ''}>
+                  <SelectValue placeholder="Select diaper type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="wet">Wet</SelectItem>
+                  <SelectItem value="dirty">Dirty</SelectItem>
+                  <SelectItem value="mixed">Mixed</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.type && <p className="text-red-500 text-sm mt-1">{errors.type}</p>}
+            </div>
+            <div>
+              <Label className="pb-1" htmlFor="diaper-notes">Notes</Label>
+              <Textarea
+                id="diaper-notes"
+                value={diaperData.notes}
+                onChange={(e) => updateDiaperData({ notes: e.target.value })}
+                placeholder="Add any notes about the diaper change..."
+              />
+            </div>
+            <Button
+              onClick={() => editingActivity
+                ? updateActivity(editingActivity.id, 'diaper', diaperData)
+                : addActivity('diaper', diaperData)
+              }
+              className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {editingActivity ? 'Update' : 'Add'} Diaper Entry
+            </Button>
+          </div>
+        );
+
+      case 'poop':
+        return (
+          <div className="space-y-4">
+            <div>
+              <Label className="pb-1" htmlFor="consistency">Consistency *</Label>
+              <Select value={poopData.consistency} onValueChange={(value) => updatePoopData({ consistency: value })}>
+                <SelectTrigger className={errors.consistency ? 'border-red-500' : ''}>
+                  <SelectValue placeholder="Select consistency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="hard">Hard</SelectItem>
+                  <SelectItem value="normal">Normal</SelectItem>
+                  <SelectItem value="soft">Soft</SelectItem>
+                  <SelectItem value="watery">Watery</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.consistency && <p className="text-red-500 text-sm mt-1">{errors.consistency}</p>}
+            </div>
+            <div>
+              <Label className="pb-1" htmlFor="poop-notes">Notes</Label>
+              <Textarea
+                id="poop-notes"
+                value={poopData.notes}
+                onChange={(e) => updatePoopData({ notes: e.target.value })}
+                placeholder="Add any notes about the poop..."
+              />
+            </div>
+            <Button
+              onClick={() => editingActivity
+                ? updateActivity(editingActivity.id, 'poop', poopData)
+                : addActivity('poop', poopData)
+              }
+              className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {editingActivity ? 'Update' : 'Add'} Poop Entry
+            </Button>
+          </div>
+        );
+
+      case 'doctor':
+        return (
+          <div className="space-y-4">
+            <div>
+              <Label className="pb-1" htmlFor="appointment-type">Appointment Type *</Label>
+              <Select value={doctorData.appointmentType} onValueChange={(value) => updateDoctorData({ appointmentType: value })}>
+                <SelectTrigger className={errors.appointmentType ? 'border-red-500' : ''}>
+                  <SelectValue placeholder="Select appointment type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="checkup">Regular Checkup</SelectItem>
+                  <SelectItem value="vaccination">Vaccination</SelectItem>
+                  <SelectItem value="sick">Sick Visit</SelectItem>
+                  <SelectItem value="emergency">Emergency</SelectItem>
+                </SelectContent>
+              </Select>
+              {errors.appointmentType && <p className="text-red-500 text-sm mt-1">{errors.appointmentType}</p>}
+            </div>
+            <div>
+              <Label className="pb-1" htmlFor="date">Date *</Label>
+              <Input
+                id="date"
+                type="datetime-local"
+                value={doctorData.date}
+                onChange={(e) => updateDoctorData({ date: e.target.value })}
+                className={errors.date ? 'border-red-500' : ''}
+              />
+              {errors.date && <p className="text-red-500 text-sm mt-1">{errors.date}</p>}
+            </div>
+            <div>
+              <Label className="pb-1" htmlFor="doctor-notes">Doctor Notes</Label>
+              <Textarea
+                id="doctor-notes"
+                value={doctorData.notes}
+                onChange={(e) => updateDoctorData({ notes: e.target.value })}
+                placeholder="Add doctor's notes and recommendations...&#10;• Enter each note on a new line&#10;• Use bullet points for better readability"
+                rows={4}
+              />
+              <p className="text-xs text-muted-foreground mt-1">Tip: Enter each item on a new line for list formatting</p>
+            </div>
+            <div>
+              <Label className="pb-1" htmlFor="questions">Questions to Ask</Label>
+              <Textarea
+                id="questions"
+                value={doctorData.questions}
+                onChange={(e) => updateDoctorData({ questions: e.target.value })}
+                placeholder="List questions for the next visit...&#10;• What about...?&#10;• Should I be concerned about...?&#10;• When should I...?"
+                rows={4}
+              />
+              <p className="text-xs text-muted-foreground mt-1">Tip: Enter each question on a new line for list formatting</p>
+            </div>
+            <Button
+              onClick={() => editingActivity
+                ? updateActivity(editingActivity.id, 'doctor', doctorData)
+                : addActivity('doctor', doctorData)
+              }
+              className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+            >
+              <Save className="mr-2 h-4 w-4" />
+              {editingActivity ? 'Update' : 'Add'} Doctor Entry
+            </Button>
+          </div>
+        );
+
+      default:
+        return (
+          <div className="text-center py-4 text-muted-foreground">
+            <p>Form for {activityType} coming soon...</p>
+          </div>
+        );
+    }
   };
 
   const getActivityIcon = (type: string) => {
@@ -502,8 +778,8 @@ export default function Home() {
 
   const getActivityColor = (type: string) => {
     switch (type) {
-      case 'feeding': return 'bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200';
-      case 'sleep': return 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200';
+      case 'feeding': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200';
+      case 'sleep': return 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200';
       case 'diaper': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
       case 'poop': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200';
       case 'doctor': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
@@ -537,13 +813,40 @@ export default function Home() {
     }
   };
 
+  const parseList = (text: string): string[] => {
+    if (!text) return [];
+    return text.split('\n').filter(item => item.trim() !== '');
+  };
+
+  const formatList = (items: string[]): string => {
+    return items.join('\n');
+  };
+
+  const renderList = (items: string[], title: string) => {
+    if (items.length === 0) return null;
+
+    return (
+      <div className="text-sm text-muted-foreground">
+        <p className="font-medium mb-2">{title}:</p>
+        <ul className="space-y-1 ml-4">
+          {items.map((item, index) => (
+            <li key={index} className="flex items-start">
+              <span className="w-1 h-1 bg-muted-foreground rounded-full mt-2 mr-2 flex-shrink-0" />
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  };
+
   const formatActivityDetails = (activity: BabyActivity) => {
     switch (activity.type) {
       case 'feeding':
         return (
-          <div className="space-y-2 w-full">
+          <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Milk className="h-4 w-4 text-sky-500" />
+              <Milk className="h-4 w-4 text-blue-500" />
               <span className="font-medium">{activity.details.amount} oz</span>
             </div>
             {activity.details.notes && (
@@ -558,7 +861,7 @@ export default function Home() {
         return (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <Moon className="h-4 w-4 text-pink-500" />
+              <Moon className="h-4 w-4 text-purple-500" />
               <span className="font-medium">{activity.details.duration} hours</span>
             </div>
             {activity.details.notes && (
@@ -600,6 +903,9 @@ export default function Home() {
           </div>
         );
       case 'doctor':
+        const doctorNotes = parseList(activity.details.notes || '');
+        const doctorQuestions = parseList(activity.details.questions || '');
+
         return (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
@@ -612,18 +918,8 @@ export default function Home() {
                 <span>{new Date(activity.details.date).toLocaleString()}</span>
               </div>
             )}
-            {activity.details.notes && (
-              <div className="text-sm text-muted-foreground">
-                <p className="font-medium mb-1">Doctor Notes:</p>
-                <p>{activity.details.notes}</p>
-              </div>
-            )}
-            {activity.details.questions && (
-              <div className="text-sm text-muted-foreground">
-                <p className="font-medium mb-1">Questions:</p>
-                <p>{activity.details.questions}</p>
-              </div>
-            )}
+            {renderList(doctorNotes, "Doctor Notes")}
+            {renderList(doctorQuestions, "Questions")}
           </div>
         );
       case 'temperature':
@@ -811,7 +1107,7 @@ export default function Home() {
     return (
       <div className="min-h-[100dvh] relative overflow-hidden flex flex-col">
         {/* Gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-sky-50 via-white to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900"></div>
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900"></div>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_50%,rgba(120,119,198,0.1),transparent_50%)]"></div>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_80%,rgba(120,119,198,0.1),transparent_50%)]"></div>
 
@@ -828,7 +1124,7 @@ export default function Home() {
               transition={{ duration: 0.5, delay: 0.2 }}
               className="mb-8"
             >
-              <div className="w-20 h-20 mx-auto bg-gradient-to-br from-sky-500 to-pink-600 rounded-full flex items-center justify-center">
+              <div className="w-20 h-20 mx-auto bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                 <Baby className="h-10 w-10 text-white" />
               </div>
             </motion.div>
@@ -837,7 +1133,7 @@ export default function Home() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.4 }}
-              className="text-4xl max-xl:hidden font-bold mb-4 bg-gradient-to-r from-sky-600 to-pink-600 bg-clip-text text-transparent"
+              className="text-4xl max-xl:hidden font-bold mb-4 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
             >
               Baby Tracker
             </motion.h1>
@@ -859,7 +1155,7 @@ export default function Home() {
               <Button
                 onClick={handleGoogleSignIn}
                 size="lg"
-                className="w-full bg-gradient-to-r from-sky-600 to-pink-600 hover:from-sky-700 hover:to-pink-700 text-white font-semibold py-3 px-8 rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
+                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold py-3 px-8 rounded-full shadow-lg hover:shadow-xl transition-all duration-300"
               >
                 <User className="mr-2 h-5 w-5" />
                 Sign in with Google
@@ -879,38 +1175,36 @@ export default function Home() {
   return (
     <div className="min-h-[100dvh] relative overflow-hidden flex flex-col">
       {/* Gradient background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-sky-50 via-white to-pink-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900"></div>
+      <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900"></div>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_50%,rgba(120,119,198,0.1),transparent_50%)]"></div>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_80%,rgba(120,119,198,0.1),transparent_50%)]"></div>
 
       <div className="relative z-10 flex flex-col flex-grow">
         {/* Fixed Header */}
-        {/* nav bar */}
         <motion.header
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          //  border-border/40 bg-background/80 border-b
-          className="fixed top-5 left-0 right-0 z-10 flex items-center backdrop-blur-lg"
+          className="fixed top-0 left-0 right-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-lg"
         >
-          <IOSCard variant="glass" intensity="high" className="container mx-auto px-4 py-3" classValue=" flex items-center justify-between">
+          <div className="container mx-auto px-4 py-3 flex items-center justify-between">
             <div className="flex items-center space-x-3">
               <AnimatedHamburger
                 isOpen={isSidebarOpen}
                 onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                 className="lg:hidden"
               />
-              <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-pink-600 rounded-full flex items-center justify-center">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                 <Baby className="h-5 w-5 text-white" />
               </div>
-              <h1 className="md:text-2xl text-xl max-lg:!hidden font-bold bg-gradient-to-r from-sky-600 to-pink-600 bg-clip-text text-transparent">
+              <h1 className="md:text-2xl text-xl max-lg:!hidden font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 Baby Tracker
               </h1>
             </div>
 
             <div className="flex items-center space-x-4">
               <div className="hidden sm:flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-sky-500 to-pink-600 rounded-full flex items-center justify-center">
+                <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                   <span className="text-white text-sm font-semibold">
                     {getUserInitials(user.displayName || '')}
                   </span>
@@ -922,24 +1216,23 @@ export default function Home() {
                 className="hidden lg:flex"
               />
             </div>
-          </IOSCard>
+          </div>
         </motion.header>
 
         {/* Sidebar */}
         <motion.div
-          initial={{ x: 500 }}
-          animate={{ x: isSidebarOpen ? 0 : 500 }}
+          initial={{ x: 300 }}
+          animate={{ x: isSidebarOpen ? 0 : 300 }}
           transition={{ duration: 0.3, ease: "easeInOut" }}
-          //  bg-background/95 backdrop-blur-xl border-l border-border/40
-          className="fixed top-5 right-5 h-fit lg:w-[350px] w-[90%] z-40 shadow-2xl"
+          className="fixed top-0 right-0 h-full w-72 bg-background/95 backdrop-blur-xl border-l border-border/40 z-40 shadow-2xl"
         >
-          <IOSCard variant="glass" intensity="high" className="p-6">
+          <div className="p-6">
             <div className="flex items-center justify-between mb-8">
               <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-pink-600 rounded-full flex items-center justify-center">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                   <Baby className="h-5 w-5 text-white" />
                 </div>
-                <h2 className="text-xl font-bold bg-gradient-to-r from-sky-600 to-pink-600 bg-clip-text text-transparent">
+                <h2 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                   Baby Tracker
                 </h2>
               </div>
@@ -955,7 +1248,7 @@ export default function Home() {
 
             <div className="space-y-4">
               <div className="flex items-center space-x-3 p-3 rounded-lg bg-muted">
-                <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-pink-600 rounded-full flex items-center justify-center">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                   <span className="text-white text-sm font-semibold">
                     {getUserInitials(user.displayName || '')}
                   </span>
@@ -1052,7 +1345,7 @@ export default function Home() {
                 </Button>
               </div>
             </div>
-          </IOSCard>
+          </div>
         </motion.div>
 
         {/* Overlay */}
@@ -1067,7 +1360,7 @@ export default function Home() {
         )}
 
         {/* Main content */}
-        <main className="container mx-auto px-4 pt-28 pb-8 flex-grow">
+        <main className="container mx-auto px-4 pt-20 pb-8 flex-grow">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Activity Cards */}
             <div className="lg:col-span-2">
@@ -1095,41 +1388,71 @@ export default function Home() {
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
                       transition={{ duration: 0.3, delay: 0.1 * index }}
-                      className="group"
+                      className={`group ${expandedCard === activity.type ? ' absolute z-[2]' : ''}`}
                     >
-                      <IOSCard
-                        variant="glass"
+                      <LiquidCard
+                        ref={expandedCard === activity.type ? expandedCardRef : null as any}
+                        variant="bubble"
+                        colorScheme="blue"
                         intensity="medium"
-                        className="h-full py-4"
-                        onClick={() => {
-                          setSelectedActivity(activity.type);
-                          setEditingActivity(null);
-                          setIsDialogOpen(true);
-                        }}>
-                        <CardHeader className="pb-3">
-                          <div className="flex items-center space-x-3">
-                            <div className="p-2 bg-gradient-to-br from-sky-500 to-pink-600 rounded-lg">
-                              <activity.icon className="h-5 w-5 text-white" />
+                        className="h-full">
+                        <CardHeader
+                          className="pb-3 cursor-pointer"
+                          onClick={(e) => handleCardHeaderClick(e, activity.type)}>
+                          <div className="flex items-center justify-between space-x-3">
+                            <div className="flex items-center space-x-3">
+                              <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
+                                <activity.icon className="h-5 w-5 text-white" />
+                              </div>
+                              <div>
+                                <CardTitle className="text-lg">{activity.title}</CardTitle>
+                                <CardDescription className="text-sm">
+                                  {activity.description}
+                                </CardDescription>
+                              </div>
                             </div>
-                            <div>
-                              <CardTitle className="text-lg">{activity.title}</CardTitle>
-                              <CardDescription className="text-sm">
-                                {activity.description}
-                              </CardDescription>
+                            <div className="flex items-center space-x-2">
+                              {/* {expandedCard === activity.type && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    closeExpandedCard();
+                                  }}
+                                  className="h-6 w-6 p-0 hover:bg-destructive hover:text-destructive-foreground"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              )} */}
+                              <motion.div
+                                animate={{ rotate: expandedCard === activity.type ? 45 : 0 }}
+                                transition={{ duration: 0.3 }}
+                              >
+                                <Plus className="h-5 w-5 text-muted-foreground" />
+                              </motion.div>
                             </div>
                           </div>
                         </CardHeader>
-                        <CardContent className="pt-0">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="w-full group-hover:bg-gradient-to-r group-hover:from-sky-500 group-hover:to-pink-600 group-hover:text-white transition-all duration-300"
-                          >
-                            <Plus className="mr-2 h-4 w-4" />
-                            Add Entry
-                          </Button>
-                        </CardContent>
-                      </IOSCard>
+
+                        {/* Expandable Form Content */}
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{
+                            height: expandedCard === activity.type ? "auto" : 0,
+                            opacity: expandedCard === activity.type ? 1 : 0
+                          }}
+                          transition={{ duration: 0.3, ease: "easeInOut" }}
+                          className="overflow-hidden"
+                        >
+                          <CardContent
+                            className="pt-0 border-t border-border/20 mt-4"
+                            onClick={handleFormClick}>
+                            {renderActivityForm(activity.type)}
+                          </CardContent>
+                        </motion.div>
+                      </LiquidCard>
                     </motion.div>
                   ))}
                 </div>
@@ -1141,7 +1464,7 @@ export default function Home() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.4 }}
               >
-                <IOSCard variant="glass" intensity="high">
+                <IOSCard variant="liquid" intensity="medium">
                   <IOSCardHeader>
                     <IOSCardTitle className="flex items-center space-x-2">
                       <History className="h-5 w-5" />
@@ -1173,13 +1496,11 @@ export default function Home() {
                                   <Badge className={getActivityColor(activity.type)}>
                                     {activity.type.charAt(0).toUpperCase() + activity.type.slice(1)}
                                   </Badge>
-                                  <span className="text-sm max-lg:hidden text-muted-foreground">
+                                  <span className="text-sm text-muted-foreground">
                                     {activity.timestamp.toLocaleDateString()} at {activity.timestamp.toLocaleTimeString()}
                                   </span>
                                 </div>
-                                <div className="w-full">
-                                  {formatActivityDetails(activity)}
-                                </div>
+                                {formatActivityDetails(activity)}
                               </div>
                             </div>
                             <div className="flex items-center space-x-2 ml-4">
@@ -1198,7 +1519,7 @@ export default function Home() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => openEditDialog(activity)}
-                                className="text-sky-600 hover:text-sky-700 hover:bg-sky-50"
+                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
                               >
                                 <Edit className="h-4 w-4" />
                               </Button>
@@ -1307,281 +1628,278 @@ export default function Home() {
         </footer>
       </div >
 
-      {/* Activity Dialog */}
-      <IOSCard variant="glass" intensity="high" className="!z-50">
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          if (!open) {
-            setEditingActivity(null);
-            resetForms();
-          }
-        }}>
-          {/*  bg-background/95 */}
-          <DialogContent className="sm:max-w-md backdrop-blur-xl bg-black/20">
-            <DialogHeader>
-              <DialogTitle className="flex items-center space-x-2">
-                {selectedActivity && getActivityIcon(selectedActivity)}
-                <span>
-                  {editingActivity ? 'Edit' : 'Add'} {selectedActivity?.charAt(0).toUpperCase() + selectedActivity?.slice(1)} Entry
-                </span>
-              </DialogTitle>
-              <DialogDescription>
-                {editingActivity ? 'Update' : 'Track'} your baby's {selectedActivity} activity
-              </DialogDescription>
-            </DialogHeader>
+      {/* Activity Dialog - Now using expandable cards instead */}
+      <Dialog open={isDialogOpen} onOpenChange={(open) => {
+        setIsDialogOpen(open);
+        if (!open) {
+          setEditingActivity(null);
+          resetForms();
+        }
+      }}>
+        <DialogContent className="sm:max-w-md bg-background/95 backdrop-blur-sm border-border/40">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              {selectedActivity && getActivityIcon(selectedActivity)}
+              <span>
+                {editingActivity ? 'Edit' : 'Add'} {selectedActivity?.charAt(0).toUpperCase() + selectedActivity?.slice(1)} Entry
+              </span>
+            </DialogTitle>
+            <DialogDescription>
+              {editingActivity ? 'Update' : 'Track'} your baby's {selectedActivity} activity
+            </DialogDescription>
+          </DialogHeader>
 
-            <div className="space-y-4">
-              {selectedActivity === 'feeding' && (
-                <div className="space-y-4">
-                  <div>
-                    <Label className="pb-1" htmlFor="amount">Amount (oz) *</Label>
-                    <Input
-                      id="amount"
-                      type="number"
-                      step="0.1"
-                      value={feedingData.amount}
-                      onChange={(e) => setFeedingData(prev => ({ ...prev, amount: e.target.value }))}
-                      placeholder="Enter amount in ounces"
-                      className={errors.amount ? 'border-red-500' : ''}
-                    />
-                    {errors.amount && <p className="text-red-500 text-sm mt-1">{errors.amount}</p>}
-                  </div>
-                  <div>
-                    <Label className="pb-1" htmlFor="feeding-time">Time</Label>
-                    <Input
-                      id="feeding-time"
-                      type="datetime-local"
-                      value={feedingData.timestamp}
-                      onChange={(e) => setFeedingData(prev => ({ ...prev, timestamp: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <Label className="pb-1" htmlFor="feeding-notes">Notes</Label>
-                    <Textarea
-                      id="feeding-notes"
-                      value={feedingData.notes}
-                      onChange={(e) => setFeedingData(prev => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Add any notes about the feeding..."
-                    />
-                  </div>
-                  <Button
-                    onClick={() => editingActivity
-                      ? updateActivity(editingActivity.id, 'feeding', feedingData)
-                      : addActivity('feeding', feedingData)
-                    }
-                    className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    {editingActivity ? 'Update' : 'Add'} Feeding Entry
-                  </Button>
+          <div className="space-y-4">
+            {selectedActivity === 'feeding' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="amount">Amount (oz) *</Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.1"
+                    value={feedingData.amount}
+                    onChange={(e) => updateFeedingData({ amount: e.target.value })}
+                    placeholder="Enter amount in ounces"
+                    className={errors.amount ? 'border-red-500' : ''}
+                  />
+                  {errors.amount && <p className="text-red-500 text-sm mt-1">{errors.amount}</p>}
                 </div>
-              )}
+                <div>
+                  <Label className="pb-1" htmlFor="feeding-time">Time</Label>
+                  <Input
+                    id="feeding-time"
+                    type="datetime-local"
+                    value={feedingData.timestamp}
+                    onChange={(e) => updateFeedingData({ timestamp: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="feeding-notes">Notes</Label>
+                  <Textarea
+                    id="feeding-notes"
+                    value={feedingData.notes}
+                    onChange={(e) => updateFeedingData({ notes: e.target.value })}
+                    placeholder="Add any notes about the feeding..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity 
+                    ? updateActivity(editingActivity.id, 'feeding', feedingData)
+                    : addActivity('feeding', feedingData)
+                  }
+                  className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Feeding Entry
+                </Button>
+              </div>
+            )}
 
-              {selectedActivity === 'sleep' && (
-                <div className="space-y-4">
+            {selectedActivity === 'sleep' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="duration">Duration (hours) *</Label>
+                  <Input
+                    id="duration"
+                    type="number"
+                    step="0.1"
+                    value={sleepData.duration}
+                    onChange={(e) => updateSleepData({ duration: e.target.value })}
+                    placeholder="Enter sleep duration"
+                    className={errors.duration ? 'border-red-500' : ''}
+                  />
+                  {errors.duration && <p className="text-red-500 text-sm mt-1">{errors.duration}</p>}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="pb-1" htmlFor="duration">Duration (hours) *</Label>
+                    <Label className="pb-1" htmlFor="start-time">Start Time</Label>
                     <Input
-                      id="duration"
-                      type="number"
-                      step="0.1"
-                      value={sleepData.duration}
-                      onChange={(e) => setSleepData(prev => ({ ...prev, duration: e.target.value }))}
-                      placeholder="Enter sleep duration"
-                      className={errors.duration ? 'border-red-500' : ''}
+                      id="start-time"
+                      type="time"
+                      value={sleepData.startTime}
+                      onChange={(e) => updateSleepData({ startTime: e.target.value })}
                     />
-                    {errors.duration && <p className="text-red-500 text-sm mt-1">{errors.duration}</p>}
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="pb-1" htmlFor="start-time">Start Time</Label>
-                      <Input
-                        id="start-time"
-                        type="time"
-                        value={sleepData.startTime}
-                        onChange={(e) => setSleepData(prev => ({ ...prev, startTime: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <Label className="pb-1" htmlFor="end-time">End Time</Label>
-                      <Input
-                        id="end-time"
-                        type="time"
-                        value={sleepData.endTime}
-                        onChange={(e) => setSleepData(prev => ({ ...prev, endTime: e.target.value }))}
-                      />
-                    </div>
                   </div>
                   <div>
-                    <Label className="pb-1" htmlFor="sleep-time">Date</Label>
+                    <Label className="pb-1" htmlFor="end-time">End Time</Label>
                     <Input
-                      id="sleep-time"
-                      type="datetime-local"
-                      value={sleepData.timestamp}
-                      onChange={(e) => setSleepData(prev => ({ ...prev, timestamp: e.target.value }))}
+                      id="end-time"
+                      type="time"
+                      value={sleepData.endTime}
+                      onChange={(e) => updateSleepData({ endTime: e.target.value })}
                     />
                   </div>
-                  <div>
-                    <Label className="pb-1" htmlFor="sleep-notes">Notes</Label>
-                    <Textarea
-                      id="sleep-notes"
-                      value={sleepData.notes}
-                      onChange={(e) => setSleepData(prev => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Add any notes about the sleep..."
-                    />
-                  </div>
-                  <Button
-                    onClick={() => editingActivity
-                      ? updateActivity(editingActivity.id, 'sleep', sleepData)
-                      : addActivity('sleep', sleepData)
-                    }
-                    className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    {editingActivity ? 'Update' : 'Add'} Sleep Entry
-                  </Button>
                 </div>
-              )}
+                <div>
+                  <Label className="pb-1" htmlFor="sleep-time">Date</Label>
+                  <Input
+                    id="sleep-time"
+                    type="datetime-local"
+                    value={sleepData.timestamp}
+                    onChange={(e) => updateSleepData({ timestamp: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="sleep-notes">Notes</Label>
+                  <Textarea
+                    id="sleep-notes"
+                    value={sleepData.notes}
+                    onChange={(e) => updateSleepData({ notes: e.target.value })}
+                    placeholder="Add any notes about the sleep..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity 
+                    ? updateActivity(editingActivity.id, 'sleep', sleepData)
+                    : addActivity('sleep', sleepData)
+                  }
+                  className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Sleep Entry
+                </Button>
+              </div>
+            )}
 
-              {selectedActivity === 'diaper' && (
-                <div className="space-y-4">
-                  <div>
-                    <Label className="pb-1" htmlFor="diaper-type">Type *</Label>
-                    <Select value={diaperData.type} onValueChange={(value) => setDiaperData(prev => ({ ...prev, type: value }))}>
-                      <SelectTrigger className={errors.type ? 'border-red-500' : ''}>
-                        <SelectValue placeholder="Select diaper type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="wet">Wet</SelectItem>
-                        <SelectItem value="dirty">Dirty</SelectItem>
-                        <SelectItem value="mixed">Mixed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {errors.type && <p className="text-red-500 text-sm mt-1">{errors.type}</p>}
-                  </div>
-                  <div>
-                    <Label className="pb-1" htmlFor="diaper-notes">Notes</Label>
-                    <Textarea
-                      id="diaper-notes"
-                      value={diaperData.notes}
-                      onChange={(e) => setDiaperData(prev => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Add any notes about the diaper change..."
-                    />
-                  </div>
-                  <Button
-                    onClick={() => editingActivity
-                      ? updateActivity(editingActivity.id, 'diaper', diaperData)
-                      : addActivity('diaper', diaperData)
-                    }
-                    className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    {editingActivity ? 'Update' : 'Add'} Diaper Entry
-                  </Button>
+            {selectedActivity === 'diaper' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="diaper-type">Type *</Label>
+                  <Select value={diaperData.type} onValueChange={(value) => updateDiaperData({ type: value })}>
+                    <SelectTrigger className={errors.type ? 'border-red-500' : ''}>
+                      <SelectValue placeholder="Select diaper type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="wet">Wet</SelectItem>
+                      <SelectItem value="dirty">Dirty</SelectItem>
+                      <SelectItem value="mixed">Mixed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.type && <p className="text-red-500 text-sm mt-1">{errors.type}</p>}
                 </div>
-              )}
+                <div>
+                  <Label className="pb-1" htmlFor="diaper-notes">Notes</Label>
+                  <Textarea
+                    id="diaper-notes"
+                    value={diaperData.notes}
+                    onChange={(e) => updateDiaperData({ notes: e.target.value })}
+                    placeholder="Add any notes about the diaper change..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity 
+                    ? updateActivity(editingActivity.id, 'diaper', diaperData)
+                    : addActivity('diaper', diaperData)
+                  }
+                  className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Diaper Entry
+                </Button>
+              </div>
+            )}
 
-              {selectedActivity === 'poop' && (
-                <div className="space-y-4">
-                  <div>
-                    <Label className="pb-1" htmlFor="consistency">Consistency *</Label>
-                    <Select value={poopData.consistency} onValueChange={(value) => setPoopData(prev => ({ ...prev, consistency: value }))}>
-                      <SelectTrigger className={errors.consistency ? 'border-red-500' : ''}>
-                        <SelectValue placeholder="Select consistency" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="hard">Hard</SelectItem>
-                        <SelectItem value="normal">Normal</SelectItem>
-                        <SelectItem value="soft">Soft</SelectItem>
-                        <SelectItem value="watery">Watery</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {errors.consistency && <p className="text-red-500 text-sm mt-1">{errors.consistency}</p>}
-                  </div>
-                  <div>
-                    <Label className="pb-1" htmlFor="poop-notes">Notes</Label>
-                    <Textarea
-                      id="poop-notes"
-                      value={poopData.notes}
-                      onChange={(e) => setPoopData(prev => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Add any notes about the poop..."
-                    />
-                  </div>
-                  <Button
-                    onClick={() => editingActivity
-                      ? updateActivity(editingActivity.id, 'poop', poopData)
-                      : addActivity('poop', poopData)
-                    }
-                    className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    {editingActivity ? 'Update' : 'Add'} Poop Entry
-                  </Button>
+            {selectedActivity === 'poop' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="consistency">Consistency *</Label>
+                  <Select value={poopData.consistency} onValueChange={(value) => updatePoopData({ consistency: value })}>
+                    <SelectTrigger className={errors.consistency ? 'border-red-500' : ''}>
+                      <SelectValue placeholder="Select consistency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hard">Hard</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="soft">Soft</SelectItem>
+                      <SelectItem value="watery">Watery</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.consistency && <p className="text-red-500 text-sm mt-1">{errors.consistency}</p>}
                 </div>
-              )}
+                <div>
+                  <Label className="pb-1" htmlFor="poop-notes">Notes</Label>
+                  <Textarea
+                    id="poop-notes"
+                    value={poopData.notes}
+                    onChange={(e) => updatePoopData({ notes: e.target.value })}
+                    placeholder="Add any notes about the poop..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity 
+                    ? updateActivity(editingActivity.id, 'poop', poopData)
+                    : addActivity('poop', poopData)
+                  }
+                  className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Poop Entry
+                </Button>
+              </div>
+            )}
 
-              {selectedActivity === 'doctor' && (
-                <div className="space-y-4">
-                  <div>
-                    <Label className="pb-1" htmlFor="appointment-type">Appointment Type *</Label>
-                    <Select value={doctorData.appointmentType} onValueChange={(value) => setDoctorData(prev => ({ ...prev, appointmentType: value }))}>
-                      <SelectTrigger className={errors.appointmentType ? 'border-red-500' : ''}>
-                        <SelectValue placeholder="Select appointment type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="checkup">Regular Checkup</SelectItem>
-                        <SelectItem value="vaccination">Vaccination</SelectItem>
-                        <SelectItem value="sick">Sick Visit</SelectItem>
-                        <SelectItem value="emergency">Emergency</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {errors.appointmentType && <p className="text-red-500 text-sm mt-1">{errors.appointmentType}</p>}
-                  </div>
-                  <div>
-                    <Label className="pb-1" htmlFor="date">Date *</Label>
-                    <Input
-                      id="date"
-                      type="datetime-local"
-                      value={doctorData.date}
-                      onChange={(e) => setDoctorData(prev => ({ ...prev, date: e.target.value }))}
-                      className={errors.date ? 'border-red-500' : ''}
-                    />
-                    {errors.date && <p className="text-red-500 text-sm mt-1">{errors.date}</p>}
-                  </div>
-                  <div>
-                    <Label className="pb-1" htmlFor="doctor-notes">Doctor Notes</Label>
-                    <Textarea
-                      id="doctor-notes"
-                      value={doctorData.notes}
-                      onChange={(e) => setDoctorData(prev => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Add doctor's notes and recommendations..."
-                    />
-                  </div>
-                  <div>
-                    <Label className="pb-1" htmlFor="questions">Questions to Ask</Label>
-                    <Textarea
-                      id="questions"
-                      value={doctorData.questions}
-                      onChange={(e) => setDoctorData(prev => ({ ...prev, questions: e.target.value }))}
-                      placeholder="List questions for the next visit..."
-                    />
-                  </div>
-                  <Button
-                    onClick={() => editingActivity
-                      ? updateActivity(editingActivity.id, 'doctor', doctorData)
-                      : addActivity('doctor', doctorData)
-                    }
-                    className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    {editingActivity ? 'Update' : 'Add'} Doctor Entry
-                  </Button>
+            {selectedActivity === 'doctor' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="appointment-type">Appointment Type *</Label>
+                  <Select value={doctorData.appointmentType} onValueChange={(value) => updateDoctorData({ appointmentType: value })}>
+                    <SelectTrigger className={errors.appointmentType ? 'border-red-500' : ''}>
+                      <SelectValue placeholder="Select appointment type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="checkup">Regular Checkup</SelectItem>
+                      <SelectItem value="vaccination">Vaccination</SelectItem>
+                      <SelectItem value="sick">Sick Visit</SelectItem>
+                      <SelectItem value="emergency">Emergency</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.appointmentType && <p className="text-red-500 text-sm mt-1">{errors.appointmentType}</p>}
                 </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-      </IOSCard>
+                <div>
+                  <Label className="pb-1" htmlFor="date">Date *</Label>
+                  <Input
+                    id="date"
+                    type="datetime-local"
+                    value={doctorData.date}
+                    onChange={(e) => updateDoctorData({ date: e.target.value })}
+                    className={errors.date ? 'border-red-500' : ''}
+                  />
+                  {errors.date && <p className="text-red-500 text-sm mt-1">{errors.date}</p>}
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="doctor-notes">Doctor Notes</Label>
+                  <Textarea
+                    id="doctor-notes"
+                    value={doctorData.notes}
+                    onChange={(e) => updateDoctorData({ notes: e.target.value })}
+                    placeholder="Add doctor's notes and recommendations..."
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="questions">Questions to Ask</Label>
+                  <Textarea
+                    id="questions"
+                    value={doctorData.questions}
+                    onChange={(e) => updateDoctorData({ questions: e.target.value })}
+                    placeholder="List questions for the next visit..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity 
+                    ? updateActivity(editingActivity.id, 'doctor', doctorData)
+                    : addActivity('doctor', doctorData)
+                  }
+                  className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Doctor Entry
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div >
   );
 }

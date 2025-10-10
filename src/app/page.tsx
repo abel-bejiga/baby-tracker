@@ -25,12 +25,16 @@ import {
   CheckCircle,
   AlertCircle,
   Milk,
-  CircleCheck
+  Edit,
+  Save,
+  X,
+  CalendarPlus
 } from "lucide-react";
 import { auth, googleProvider } from "@/lib/firebase";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
-import { collection, addDoc, query, where, getDocs, doc, deleteDoc } from "firebase/firestore";
+import { collection, addDoc, query, where, getDocs, doc, deleteDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { addToAppleCalendar, createDoctorAppointmentEvent } from "@/lib/calendar";
 
 interface BabyActivity {
   id: string;
@@ -45,6 +49,7 @@ export default function Home() {
   const [activities, setActivities] = useState<BabyActivity[]>([]);
   const [selectedActivity, setSelectedActivity] = useState<string>('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingActivity, setEditingActivity] = useState<BabyActivity | null>(null);
 
   // Form states
   const [feedingData, setFeedingData] = useState({ amount: '', notes: '' });
@@ -57,6 +62,9 @@ export default function Home() {
     questions: '',
     date: ''
   });
+
+  // Form errors
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -97,8 +105,38 @@ export default function Home() {
     }
   };
 
+  const validateForm = (type: string, data: any) => {
+    const newErrors: Record<string, string> = {};
+    
+    switch (type) {
+      case 'feeding':
+        if (!data.amount) newErrors.amount = 'Amount is required';
+        break;
+      case 'sleep':
+        if (!data.duration) newErrors.duration = 'Duration is required';
+        break;
+      case 'diaper':
+        if (!data.type) newErrors.type = 'Type is required';
+        break;
+      case 'poop':
+        if (!data.consistency) newErrors.consistency = 'Consistency is required';
+        break;
+      case 'doctor':
+        if (!data.appointmentType) newErrors.appointmentType = 'Appointment type is required';
+        if (!data.date) newErrors.date = 'Date is required';
+        break;
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const addActivity = async (type: string, data: any) => {
     if (!user) return;
+
+    if (!validateForm(type, data)) {
+      return;
+    }
 
     try {
       const docRef = await addDoc(collection(db, "users", user.uid, "activities"), {
@@ -116,15 +154,46 @@ export default function Home() {
         details: data
       }, ...prev]);
 
+      // Add to Apple Calendar if it's a doctor appointment
+      if (type === 'doctor') {
+        try {
+          const calendarEvent = createDoctorAppointmentEvent(data);
+          addToAppleCalendar(calendarEvent);
+        } catch (calendarError) {
+          console.warn("Could not add to Apple Calendar:", calendarError);
+        }
+      }
+
       setIsDialogOpen(false);
-      // Reset form data
-      setFeedingData({ amount: '', notes: '' });
-      setSleepData({ duration: '', notes: '' });
-      setDiaperData({ type: '', notes: '' });
-      setPoopData({ consistency: '', notes: '' });
-      setDoctorData({ appointmentType: '', notes: '', questions: '', date: '' });
+      resetForms();
     } catch (error) {
       console.error("Error adding activity: ", error);
+    }
+  };
+
+  const updateActivity = async (id: string, type: string, data: any) => {
+    if (!user) return;
+
+    if (!validateForm(type, data)) {
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, "users", user.uid, "activities", id), {
+        details: data
+      });
+
+      setActivities(prev => prev.map(activity => 
+        activity.id === id 
+          ? { ...activity, details: data }
+          : activity
+      ));
+
+      setEditingActivity(null);
+      setIsDialogOpen(false);
+      resetForms();
+    } catch (error) {
+      console.error("Error updating activity: ", error);
     }
   };
 
@@ -135,6 +204,58 @@ export default function Home() {
     } catch (error) {
       console.error("Error deleting activity: ", error);
     }
+  };
+
+  const resetForms = () => {
+    setFeedingData({ amount: '', notes: '' });
+    setSleepData({ duration: '', notes: '' });
+    setDiaperData({ type: '', notes: '' });
+    setPoopData({ consistency: '', notes: '' });
+    setDoctorData({ appointmentType: '', notes: '', questions: '', date: '' });
+    setErrors({});
+  };
+
+  const openEditDialog = (activity: BabyActivity) => {
+    setEditingActivity(activity);
+    setSelectedActivity(activity.type);
+    
+    // Populate form with existing data
+    switch (activity.type) {
+      case 'feeding':
+        setFeedingData({
+          amount: activity.details.amount || '',
+          notes: activity.details.notes || ''
+        });
+        break;
+      case 'sleep':
+        setSleepData({
+          duration: activity.details.duration || '',
+          notes: activity.details.notes || ''
+        });
+        break;
+      case 'diaper':
+        setDiaperData({
+          type: activity.details.type || '',
+          notes: activity.details.notes || ''
+        });
+        break;
+      case 'poop':
+        setPoopData({
+          consistency: activity.details.consistency || '',
+          notes: activity.details.notes || ''
+        });
+        break;
+      case 'doctor':
+        setDoctorData({
+          appointmentType: activity.details.appointmentType || '',
+          notes: activity.details.notes || '',
+          questions: activity.details.questions || '',
+          date: activity.details.date || ''
+        });
+        break;
+    }
+    
+    setIsDialogOpen(true);
   };
 
   const getActivityIcon = (type: string) => {
@@ -159,16 +280,120 @@ export default function Home() {
     }
   };
 
+  const addToCalendar = (activity: BabyActivity) => {
+    if (activity.type === 'doctor') {
+      try {
+        const calendarEvent = createDoctorAppointmentEvent(activity.details);
+        addToAppleCalendar(calendarEvent);
+      } catch (error) {
+        console.error("Error adding to calendar:", error);
+      }
+    }
+  };
+
+  const formatActivityDetails = (activity: BabyActivity) => {
+    switch (activity.type) {
+      case 'feeding':
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Milk className="h-4 w-4 text-blue-500" />
+              <span className="font-medium">{activity.details.amount} oz</span>
+            </div>
+            {activity.details.notes && (
+              <div className="text-sm text-muted-foreground">
+                <p className="font-medium mb-1">Notes:</p>
+                <p>{activity.details.notes}</p>
+              </div>
+            )}
+          </div>
+        );
+      case 'sleep':
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Moon className="h-4 w-4 text-purple-500" />
+              <span className="font-medium">{activity.details.duration} hours</span>
+            </div>
+            {activity.details.notes && (
+              <div className="text-sm text-muted-foreground">
+                <p className="font-medium mb-1">Notes:</p>
+                <p>{activity.details.notes}</p>
+              </div>
+            )}
+          </div>
+        );
+      case 'diaper':
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Activity className="h-4 w-4 text-green-500" />
+              <span className="font-medium capitalize">{activity.details.type}</span>
+            </div>
+            {activity.details.notes && (
+              <div className="text-sm text-muted-foreground">
+                <p className="font-medium mb-1">Notes:</p>
+                <p>{activity.details.notes}</p>
+              </div>
+            )}
+          </div>
+        );
+      case 'poop':
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 text-yellow-500" />
+              <span className="font-medium capitalize">{activity.details.consistency}</span>
+            </div>
+            {activity.details.notes && (
+              <div className="text-sm text-muted-foreground">
+                <p className="font-medium mb-1">Notes:</p>
+                <p>{activity.details.notes}</p>
+              </div>
+            )}
+          </div>
+        );
+      case 'doctor':
+        return (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Stethoscope className="h-4 w-4 text-red-500" />
+              <span className="font-medium">{activity.details.appointmentType}</span>
+            </div>
+            {activity.details.date && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Calendar className="h-3 w-3" />
+                <span>{new Date(activity.details.date).toLocaleString()}</span>
+              </div>
+            )}
+            {activity.details.notes && (
+              <div className="text-sm text-muted-foreground">
+                <p className="font-medium mb-1">Doctor Notes:</p>
+                <p>{activity.details.notes}</p>
+              </div>
+            )}
+            {activity.details.questions && (
+              <div className="text-sm text-muted-foreground">
+                <p className="font-medium mb-1">Questions:</p>
+                <p>{activity.details.questions}</p>
+              </div>
+            )}
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
 
   if (!user) {
     return (
-      <div className="min-h-screen relative overflow-hidden">
+      <div className="min-h-[100dvh] relative overflow-hidden flex flex-col">
         {/* Gradient background */}
         <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900"></div>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_50%,rgba(120,119,198,0.1),transparent_50%)]"></div>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_80%,rgba(120,119,198,0.1),transparent_50%)]"></div>
 
-        <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-4">
+        <div className="relative z-10 flex flex-col items-center justify-center min-h-[100dvh] p-4 flex-grow">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -220,18 +445,23 @@ export default function Home() {
             </motion.div>
           </motion.div>
         </div>
+
+        {/* Footer */}
+        <footer className="relative z-10 text-center py-4 text-sm text-muted-foreground">
+          Motivated by my first born. Made by abelbejiga.com
+        </footer>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen relative overflow-hidden">
+    <div className="min-h-[100dvh] relative overflow-hidden flex flex-col">
       {/* Gradient background */}
       <div className="absolute inset-0 bg-gradient-to-br from-blue-50 via-white to-purple-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900"></div>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_50%,rgba(120,119,198,0.1),transparent_50%)]"></div>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_80%,rgba(120,119,198,0.1),transparent_50%)]"></div>
 
-      <div className="relative z-10">
+      <div className="relative z-10 flex flex-col flex-grow">
         {/* Header */}
         <motion.header
           initial={{ opacity: 0, y: -20 }}
@@ -267,7 +497,7 @@ export default function Home() {
         </motion.header>
 
         {/* Main content */}
-        <main className="container mx-auto px-4 py-8">
+        <main className="container mx-auto px-4 py-8 flex-grow">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Activity Cards */}
             <div className="lg:col-span-2">
@@ -294,12 +524,13 @@ export default function Home() {
                       <Card className="h-full hover:shadow-lg transition-all duration-300 cursor-pointer border-border/40 bg-background/60 backdrop-blur-sm"
                         onClick={() => {
                           setSelectedActivity(activity.type);
+                          setEditingActivity(null);
                           setIsDialogOpen(true);
                         }}>
                         <CardHeader className="pb-3">
                           <div className="flex items-center space-x-3">
                             <div className="p-2 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg">
-                              <Activity className="h-5 w-5 text-white" />
+                              <activity.icon className="h-5 w-5 text-white" />
                             </div>
                             <div>
                               <CardTitle className="text-lg">{activity.title}</CardTitle>
@@ -346,82 +577,61 @@ export default function Home() {
                           <p>No activities yet. Start tracking your baby's activities!</p>
                         </div>
                       ) : (
-                        activities.map((activity) => {
-                          const slicedNotes =
-                            activity?.details?.notes
-                              ? (activity.details.notes as string)
-                                .split("-")
-                                .map(s => s.trim())
-                                .filter(s => s)
-                              : [];
-
-                          const slicedQuestions =
-                            activity?.details?.questions
-                              ? (activity.details.questions as string)
-                                .split("-")
-                                .map(s => s.trim())
-                                .filter(s => s)
-                              : [];
-
-                          return (
-                            <motion.div
-                              key={activity.id}
-                              initial={{ opacity: 0, x: -20 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ duration: 0.3 }}
-                              className="flex items-center justify-between p-4 rounded-lg border border-border/40 bg-background/40"
-                            >
-                              <div className="flex items-center space-x-3">
-                                <div className="p-2 rounded-lg bg-background">
-                                  {getActivityIcon(activity.type)}
-                                </div>
-                                <div>
-                                  <div className="flex items-center space-x-2">
-                                    <Badge className={getActivityColor(activity.type)}>
-                                      {activity.type.charAt(0).toUpperCase() + activity.type.slice(1)}
-                                    </Badge>
-                                    <span className="text-sm text-muted-foreground">
-                                      {activity.timestamp.toLocaleDateString()} at {activity.timestamp.toLocaleTimeString()}
-                                    </span>
-                                  </div>
-
-                                  <div className="mb-2">
-                                    <p className="text-sm text-muted-foreground mt-1 font-bold">Notes</p>
-                                    <ul>
-                                      {activity.details.notes && (slicedNotes?.map((item, i) => (
-                                        item !== " " &&
-                                        <li key={i} className="text-sm list-disc text-muted-foreground mt-1 pl-3 flex items-center gap-2">
-                                          <CircleCheck className="w-4 h-4" /> {item}
-                                        </li>
-                                      )) ?? activity.details.notes)}
-                                    </ul>
-                                  </div>
-                                  <div className="mb-2">
-                                    <p className="text-sm text-muted-foreground mt-1 font-bold">Questions</p>
-                                    <ul>
-                                      {activity.details.questions && (slicedQuestions?.map((item, i) => (
-                                        item !== " " &&
-                                        <li key={i + "_questions"} className="text-sm list-disc text-muted-foreground mt-1 pl-3 flex items-center gap-2">
-                                          <CircleCheck className="w-4 h-4" /> {item}
-                                        </li>
-                                      )) ?? activity.details.questions)}
-                                    </ul>
-
-                                  </div>
-
-                                </div>
+                        activities.map((activity) => (
+                          <motion.div
+                            key={activity.id}
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ duration: 0.3 }}
+                            className="flex items-start justify-between p-4 rounded-lg border border-border/40 bg-background/40"
+                          >
+                            <div className="flex items-start space-x-3 flex-grow">
+                              <div className="p-2 rounded-lg bg-background mt-1">
+                                {getActivityIcon(activity.type)}
                               </div>
+                              <div className="flex-grow">
+                                <div className="flex items-center space-x-2 mb-2">
+                                  <Badge className={getActivityColor(activity.type)}>
+                                    {activity.type.charAt(0).toUpperCase() + activity.type.slice(1)}
+                                  </Badge>
+                                  <span className="text-sm text-muted-foreground">
+                                    {activity.timestamp.toLocaleDateString()} at {activity.timestamp.toLocaleTimeString()}
+                                  </span>
+                                </div>
+                                {formatActivityDetails(activity)}
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2 ml-4">
+                              {activity.type === 'doctor' && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => addToCalendar(activity)}
+                                  className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                  title="Add to Apple Calendar"
+                                >
+                                  <CalendarPlus className="h-4 w-4" />
+                                </Button>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openEditDialog(activity)}
+                                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => deleteActivity(activity.id)}
                                 className="text-destructive hover:text-destructive hover:bg-destructive/10"
                               >
-                                Delete
+                                <X className="h-4 w-4" />
                               </Button>
-                            </motion.div>
-                          )
-                        })
+                            </div>
+                          </motion.div>
+                        ))
                       )}
                     </div>
                   </CardContent>
@@ -451,6 +661,7 @@ export default function Home() {
                         { type: 'sleep', label: 'Sleep Sessions', icon: Moon },
                         { type: 'diaper', label: 'Diaper Changes', icon: Activity },
                         { type: 'poop', label: 'Poop Times', icon: AlertCircle },
+                        { type: 'doctor', label: "Doctor", icon: Stethoscope }
                       ].map((stat) => {
                         const count = activities.filter(
                           activity => activity.type === stat.type &&
@@ -495,7 +706,7 @@ export default function Home() {
                               </div>
                               {activity.details.date && (
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  {activity.details.date}
+                                  {new Date(activity.details.date).toLocaleString()}
                                 </p>
                               )}
                             </div>
@@ -508,18 +719,31 @@ export default function Home() {
             </div>
           </div>
         </main>
-      </div>
+
+        {/* Footer */}
+        <footer className="relative z-10 text-center py-4 text-sm text-muted-foreground border-t border-border/40 bg-background/80 backdrop-blur-sm">
+          Motivated by my first born. Made by abelbejiga.com
+        </footer>
+      </div >
 
       {/* Activity Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => {
+        setIsDialogOpen(open);
+        if (!open) {
+          setEditingActivity(null);
+          resetForms();
+        }
+      }}>
         <DialogContent className="sm:max-w-md bg-background/95 backdrop-blur-sm border-border/40">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               {selectedActivity && getActivityIcon(selectedActivity)}
-              <span>Add {selectedActivity?.charAt(0).toUpperCase() + selectedActivity?.slice(1)} Entry</span>
+              <span>
+                {editingActivity ? 'Edit' : 'Add'} {selectedActivity?.charAt(0).toUpperCase() + selectedActivity?.slice(1)} Entry
+              </span>
             </DialogTitle>
             <DialogDescription>
-              Track your baby's {selectedActivity} activity
+              {editingActivity ? 'Update' : 'Track'} your baby's {selectedActivity} activity
             </DialogDescription>
           </DialogHeader>
 
@@ -527,14 +751,16 @@ export default function Home() {
             {selectedActivity === 'feeding' && (
               <div className="space-y-4">
                 <div>
-                  <Label className="pb-1" htmlFor="amount">Amount (oz)</Label>
+                  <Label className="pb-1" htmlFor="amount">Amount (oz) *</Label>
                   <Input
                     id="amount"
                     type="number"
                     value={feedingData.amount}
                     onChange={(e) => setFeedingData(prev => ({ ...prev, amount: e.target.value }))}
                     placeholder="Enter amount in ounces"
+                    className={errors.amount ? 'border-red-500' : ''}
                   />
+                  {errors.amount && <p className="text-red-500 text-sm mt-1">{errors.amount}</p>}
                 </div>
                 <div>
                   <Label className="pb-1" htmlFor="feeding-notes">Notes</Label>
@@ -546,10 +772,14 @@ export default function Home() {
                   />
                 </div>
                 <Button
-                  onClick={() => addActivity('feeding', feedingData)}
+                  onClick={() => editingActivity 
+                    ? updateActivity(editingActivity.id, 'feeding', feedingData)
+                    : addActivity('feeding', feedingData)
+                  }
                   className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
                 >
-                  Add Feeding Entry
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Feeding Entry
                 </Button>
               </div>
             )}
@@ -557,14 +787,16 @@ export default function Home() {
             {selectedActivity === 'sleep' && (
               <div className="space-y-4">
                 <div>
-                  <Label className="pb-1" htmlFor="duration">Duration (hours)</Label>
+                  <Label className="pb-1" htmlFor="duration">Duration (hours) *</Label>
                   <Input
                     id="duration"
                     type="number"
                     value={sleepData.duration}
                     onChange={(e) => setSleepData(prev => ({ ...prev, duration: e.target.value }))}
                     placeholder="Enter sleep duration"
+                    className={errors.duration ? 'border-red-500' : ''}
                   />
+                  {errors.duration && <p className="text-red-500 text-sm mt-1">{errors.duration}</p>}
                 </div>
                 <div>
                   <Label className="pb-1" htmlFor="sleep-notes">Notes</Label>
@@ -576,10 +808,14 @@ export default function Home() {
                   />
                 </div>
                 <Button
-                  onClick={() => addActivity('sleep', sleepData)}
+                  onClick={() => editingActivity 
+                    ? updateActivity(editingActivity.id, 'sleep', sleepData)
+                    : addActivity('sleep', sleepData)
+                  }
                   className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
                 >
-                  Add Sleep Entry
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Sleep Entry
                 </Button>
               </div>
             )}
@@ -587,9 +823,9 @@ export default function Home() {
             {selectedActivity === 'diaper' && (
               <div className="space-y-4">
                 <div>
-                  <Label className="pb-1" htmlFor="diaper-type">Type</Label>
+                  <Label className="pb-1" htmlFor="diaper-type">Type *</Label>
                   <Select value={diaperData.type} onValueChange={(value) => setDiaperData(prev => ({ ...prev, type: value }))}>
-                    <SelectTrigger>
+                    <SelectTrigger className={errors.type ? 'border-red-500' : ''}>
                       <SelectValue placeholder="Select diaper type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -598,6 +834,7 @@ export default function Home() {
                       <SelectItem value="mixed">Mixed</SelectItem>
                     </SelectContent>
                   </Select>
+                  {errors.type && <p className="text-red-500 text-sm mt-1">{errors.type}</p>}
                 </div>
                 <div>
                   <Label className="pb-1" htmlFor="diaper-notes">Notes</Label>
@@ -609,10 +846,14 @@ export default function Home() {
                   />
                 </div>
                 <Button
-                  onClick={() => addActivity('diaper', diaperData)}
+                  onClick={() => editingActivity 
+                    ? updateActivity(editingActivity.id, 'diaper', diaperData)
+                    : addActivity('diaper', diaperData)
+                  }
                   className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
                 >
-                  Add Diaper Entry
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Diaper Entry
                 </Button>
               </div>
             )}
@@ -620,9 +861,9 @@ export default function Home() {
             {selectedActivity === 'poop' && (
               <div className="space-y-4">
                 <div>
-                  <Label className="pb-1" htmlFor="consistency">Consistency</Label>
+                  <Label className="pb-1" htmlFor="consistency">Consistency *</Label>
                   <Select value={poopData.consistency} onValueChange={(value) => setPoopData(prev => ({ ...prev, consistency: value }))}>
-                    <SelectTrigger>
+                    <SelectTrigger className={errors.consistency ? 'border-red-500' : ''}>
                       <SelectValue placeholder="Select consistency" />
                     </SelectTrigger>
                     <SelectContent>
@@ -632,6 +873,7 @@ export default function Home() {
                       <SelectItem value="watery">Watery</SelectItem>
                     </SelectContent>
                   </Select>
+                  {errors.consistency && <p className="text-red-500 text-sm mt-1">{errors.consistency}</p>}
                 </div>
                 <div>
                   <Label className="pb-1" htmlFor="poop-notes">Notes</Label>
@@ -643,10 +885,14 @@ export default function Home() {
                   />
                 </div>
                 <Button
-                  onClick={() => addActivity('poop', poopData)}
+                  onClick={() => editingActivity 
+                    ? updateActivity(editingActivity.id, 'poop', poopData)
+                    : addActivity('poop', poopData)
+                  }
                   className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
                 >
-                  Add Poop Entry
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Poop Entry
                 </Button>
               </div>
             )}
@@ -654,9 +900,9 @@ export default function Home() {
             {selectedActivity === 'doctor' && (
               <div className="space-y-4">
                 <div>
-                  <Label className="pb-1" htmlFor="appointment-type">Appointment Type</Label>
+                  <Label className="pb-1" htmlFor="appointment-type">Appointment Type *</Label>
                   <Select value={doctorData.appointmentType} onValueChange={(value) => setDoctorData(prev => ({ ...prev, appointmentType: value }))}>
-                    <SelectTrigger>
+                    <SelectTrigger className={errors.appointmentType ? 'border-red-500' : ''}>
                       <SelectValue placeholder="Select appointment type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -666,16 +912,18 @@ export default function Home() {
                       <SelectItem value="emergency">Emergency</SelectItem>
                     </SelectContent>
                   </Select>
+                  {errors.appointmentType && <p className="text-red-500 text-sm mt-1">{errors.appointmentType}</p>}
                 </div>
                 <div>
-                  <Label className="pb-1" htmlFor="date">Date</Label>
+                  <Label className="pb-1" htmlFor="date">Date *</Label>
                   <Input
                     id="date"
                     type="datetime-local"
                     value={doctorData.date}
-                    required
                     onChange={(e) => setDoctorData(prev => ({ ...prev, date: e.target.value }))}
+                    className={errors.date ? 'border-red-500' : ''}
                   />
+                  {errors.date && <p className="text-red-500 text-sm mt-1">{errors.date}</p>}
                 </div>
                 <div>
                   <Label className="pb-1" htmlFor="doctor-notes">Doctor Notes</Label>
@@ -696,16 +944,20 @@ export default function Home() {
                   />
                 </div>
                 <Button
-                  onClick={() => addActivity('doctor', doctorData)}
+                  onClick={() => editingActivity 
+                    ? updateActivity(editingActivity.id, 'doctor', doctorData)
+                    : addActivity('doctor', doctorData)
+                  }
                   className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700"
                 >
-                  Add Doctor Entry
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Doctor Entry
                 </Button>
               </div>
             )}
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }

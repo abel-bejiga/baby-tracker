@@ -8,8 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Baby,
@@ -25,7 +24,8 @@ import {
   Calendar,
   CheckCircle,
   AlertCircle,
-  Milk
+  Milk,
+  CircleCheck
 } from "lucide-react";
 import { auth, googleProvider } from "@/lib/firebase";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
@@ -347,8 +347,21 @@ export default function Home() {
                         </div>
                       ) : (
                         activities.map((activity) => {
-                          const slicedNotes = (activity?.details?.notes as string).split("-")
-                          console.log(slicedNotes, "SLICED")
+                          const slicedNotes =
+                            activity?.details?.notes
+                              ? (activity.details.notes as string)
+                                .split("-")
+                                .map(s => s.trim())
+                                .filter(s => s)
+                              : [];
+
+                          const slicedQuestions =
+                            activity?.details?.questions
+                              ? (activity.details.questions as string)
+                                .split("-")
+                                .map(s => s.trim())
+                                .filter(s => s)
+                              : [];
 
                           return (
                             <motion.div
@@ -371,16 +384,31 @@ export default function Home() {
                                       {activity.timestamp.toLocaleDateString()} at {activity.timestamp.toLocaleTimeString()}
                                     </span>
                                   </div>
-                                  {activity.details.notes && slicedNotes.map((item, i) => (
-                                    <p key={i} className="text-sm text-muted-foreground mt-1">
-                                      {item}
-                                    </p>
-                                  ))}
-                                  {activity.details.questions && (
-                                    <p className="text-sm text-muted-foreground mt-1">
-                                      {activity.details.questions}
-                                    </p>
-                                  )}
+
+                                  <div className="mb-2">
+                                    <p className="text-sm text-muted-foreground mt-1 font-bold">Notes</p>
+                                    <ul>
+                                      {activity.details.notes && (slicedNotes?.map((item, i) => (
+                                        item !== " " &&
+                                        <li key={i} className="text-sm list-disc text-muted-foreground mt-1 pl-3 flex items-center gap-2">
+                                          <CircleCheck className="w-4 h-4" /> {item}
+                                        </li>
+                                      )) ?? activity.details.notes)}
+                                    </ul>
+                                  </div>
+                                  <div className="mb-2">
+                                    <p className="text-sm text-muted-foreground mt-1 font-bold">Questions</p>
+                                    <ul>
+                                      {activity.details.questions && (slicedQuestions?.map((item, i) => (
+                                        item !== " " &&
+                                        <li key={i + "_questions"} className="text-sm list-disc text-muted-foreground mt-1 pl-3 flex items-center gap-2">
+                                          <CircleCheck className="w-4 h-4" /> {item}
+                                        </li>
+                                      )) ?? activity.details.questions)}
+                                    </ul>
+
+                                  </div>
+
                                 </div>
                               </div>
                               <Button

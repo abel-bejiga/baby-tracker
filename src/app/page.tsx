@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,7 +42,16 @@ import {
   Pill,
   Shield,
   TrendingUp,
-  Star
+  Star,
+  BookOpen,
+  Brain,
+  Scale,
+  Ruler,
+  Sparkles,
+  Upload,
+  Play,
+  Pause,
+  Camera
 } from "lucide-react";
 import { auth, googleProvider } from "@/lib/firebase";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
@@ -50,8 +59,14 @@ import { collection, addDoc, query, where, getDocs, doc, deleteDoc, updateDoc } 
 import { db } from "@/lib/firebase";
 import { addToAppleCalendar, createDoctorAppointmentEvent } from "@/lib/calendar";
 import { AnimatedHamburger } from "@/components/ui/animated-hamburger";
-import { useToast } from "@/hooks/use-toast";
+import { useBabyTrackerLocalStorage, defaultFormData } from "@/hooks/use-baby-tracker-local-storage";
+import { useClickOutside } from "@/hooks/use-click-outside";
+import MultiUserShare from "@/components/multi-user-share";
+import AIInsights from "@/components/ai-insight";
+import VisualTimeline from "@/components/visual-timeline";
+import ChildProfile from "@/components/child-profile";
 import Link from "next/link";
+import { useNotification } from "@/components/ui/notification";
 
 interface BabyActivity {
   id: string;
@@ -68,77 +83,50 @@ export default function Home() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingActivity, setEditingActivity] = useState<BabyActivity | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const { toast } = useToast();
+  const [expandedCard, setExpandedCard] = useState<string | null>(null);
+  const [babyId, setBabyId] = useState<string>('default-baby');
+  const [currentAge, setCurrentAge] = useState<number>(6); // Default 6 months
 
-  // Form states
-  const [feedingData, setFeedingData] = useState({ amount: '', notes: '', timestamp: '' });
-  const [sleepData, setSleepData] = useState({ duration: '', notes: '', startTime: '', endTime: '', timestamp: '' });
-  const [diaperData, setDiaperData] = useState({ type: '', notes: '', timestamp: '' });
-  const [poopData, setPoopData] = useState({ consistency: '', notes: '', timestamp: '' });
-  const [doctorData, setDoctorData] = useState({
-    appointmentType: '',
-    notes: '',
-    questions: '',
-    date: '',
-    location: '',
-    doctorName: '',
-    hospitalName: ''
-  });
-  const [temperatureData, setTemperatureData] = useState({
-    temperature: '',
-    unit: 'celsius', // celsius or fahrenheit
-    notes: '',
-    timestamp: ''
-  });
-  const [medicationData, setMedicationData] = useState({
-    medicationName: '',
-    dosage: '',
-    frequency: '',
-    duration: '',
-    notes: '',
-    timestamp: ''
-  });
-  const [vaccinationData, setVaccinationData] = useState({
-    vaccineName: '',
-    doseNumber: '',
-    administeredBy: '',
-    nextDueDate: '',
-    notes: '',
-    timestamp: ''
-  });
-  const [milestoneData, setMilestoneData] = useState({
-    milestoneType: '',
-    description: '',
-    dateAchieved: '',
-    notes: '',
-    timestamp: ''
-  });
-  const [growthData, setGrowthData] = useState({
-    weight: '', // in kg
-    height: '', // in cm
-    headCircumference: '', // in cm
-    date: '',
-    notes: '',
-    timestamp: ''
-  });
-  const [symptomsData, setSymptomsData] = useState({
-    symptomType: '',
-    severity: 'mild', // mild, moderate, severe
-    description: '',
-    startDate: '',
-    endDate: '',
-    notes: '',
-    timestamp: ''
-  });
+  // Form states with localStorage persistence
+  const { formData, updateFormData, getFormData, clearFormData } = useBabyTrackerLocalStorage();
+
+  // Helper functions for updating form data
+  const updateFeedingData = (data: Partial<typeof feedingData>) => updateFormData('feeding', data);
+  const updateSleepData = (data: Partial<typeof sleepData>) => updateFormData('sleep', data);
+  const updateDiaperData = (data: Partial<typeof diaperData>) => updateFormData('diaper', data);
+  const updatePoopData = (data: Partial<typeof poopData>) => updateFormData('poop', data);
+  const updateDoctorData = (data: Partial<typeof doctorData>) => updateFormData('doctor', data);
+  const updateTemperatureData = (data: Partial<typeof temperatureData>) => updateFormData('temperature', data);
+  const updateMedicationData = (data: Partial<typeof medicationData>) => updateFormData('medication', data);
+  const updateVaccinationData = (data: Partial<typeof vaccinationData>) => updateFormData('vaccination', data);
+  const updateMilestoneData = (data: Partial<typeof milestoneData>) => updateFormData('milestone', data);
+  const updateGrowthData = (data: Partial<typeof growthData>) => updateFormData('growth', data);
+  const updateSymptomsData = (data: Partial<typeof symptomsData>) => updateFormData('symptoms', data);
+
+  // Extract form data for easier access
+  const feedingData: any = getFormData('feeding');
+  const sleepData: any = getFormData('sleep');
+  const diaperData: any = getFormData('diaper');
+  const poopData: any = getFormData('poop');
+  const doctorData: any = getFormData('doctor');
+  const temperatureData: any = getFormData('temperature');
+  const medicationData: any = getFormData('medication');
+  const vaccinationData: any = getFormData('vaccination');
+  const milestoneData: any = getFormData('milestone');
+  const growthData: any = getFormData('growth');
+  const symptomsData: any = getFormData('symptoms');
 
   // Form errors
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const { success, error } = useNotification()
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
         fetchActivities(currentUser.uid);
+        // Create or get baby profile
+        setBabyId(currentUser.uid);
       }
     });
 
@@ -159,16 +147,15 @@ export default function Home() {
   const handleGoogleSignIn = async () => {
     try {
       await signInWithPopup(auth, googleProvider);
-      toast({
+      success({
         title: "Welcome!",
         description: "Successfully signed in to Baby Tracker.",
       });
-    } catch (error) {
-      console.error("Error signing in with Google: ", error);
-      toast({
+    } catch (err) {
+      console.error("Error signing in with Google: ", err);
+      error({
         title: "Sign In Error",
         description: "Failed to sign in. Please try again.",
-        variant: "destructive",
       });
     }
   };
@@ -177,16 +164,15 @@ export default function Home() {
     try {
       await signOut(auth);
       setActivities([]);
-      toast({
+      success({
         title: "Goodbye!",
         description: "Successfully signed out of Baby Tracker.",
       });
-    } catch (error) {
-      console.error("Error signing out: ", error);
-      toast({
+    } catch (err) {
+      console.error("Error signing out: ", (err as Error).message);
+      error({
         title: "Sign Out Error",
-        description: "Failed to sign out. Please try again.",
-        variant: "destructive",
+        description: "Failed to sign out. Please try again."
       });
     }
   };
@@ -238,7 +224,7 @@ export default function Home() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const addActivity = async (type: string, data: any) => {
+  const addActivity = async (type: any, data: any) => {
     if (!user) return;
 
     if (!validateForm(type, data)) {
@@ -287,24 +273,25 @@ export default function Home() {
       }
 
       setIsDialogOpen(false);
+      setExpandedCard(null);
       resetForms();
+      clearFormData(type);
 
       // Show success toast
-      toast({
+      success({
         title: "Success!",
         description: `${type.charAt(0).toUpperCase() + type.slice(1)} entry added successfully.`,
       });
-    } catch (error) {
-      console.error("Error adding activity: ", error);
-      toast({
+    } catch (err) {
+      console.error("Error adding activity: ", (err as Error).message);
+      error({
         title: "Error",
         description: "Failed to add activity. Please try again.",
-        variant: "destructive",
       });
     }
   };
 
-  const updateActivity = async (id: string, type: string, data: any) => {
+  const updateActivity = async (id: string, type: any, data: any) => {
     if (!user) return;
 
     if (!validateForm(type, data)) {
@@ -324,19 +311,20 @@ export default function Home() {
 
       setEditingActivity(null);
       setIsDialogOpen(false);
+      setExpandedCard(null);
       resetForms();
+      clearFormData(type);
 
       // Show success toast
-      toast({
+      success({
         title: "Success!",
         description: `${type.charAt(0).toUpperCase() + type.slice(1)} entry updated successfully.`,
       });
-    } catch (error) {
-      console.error("Error updating activity: ", error);
-      toast({
+    } catch (err) {
+      console.error("Error updating activity: ", (err as Error).message);
+      error({
         title: "Error",
         description: "Failed to update activity. Please try again.",
-        variant: "destructive",
       });
     }
   };
@@ -349,17 +337,16 @@ export default function Home() {
 
       // Show success toast
       if (activityToDelete) {
-        toast({
+        success({
           title: "Success!",
           description: `${activityToDelete.type.charAt(0).toUpperCase() + activityToDelete.type.slice(1)} entry deleted successfully.`,
         });
       }
-    } catch (error) {
-      console.error("Error deleting activity: ", error);
-      toast({
+    } catch (err) {
+      console.error("Error deleting activity: ", (err as Error).message);
+      error({
         title: "Error",
         description: "Failed to delete activity. Please try again.",
-        variant: "destructive",
       });
     }
   };
@@ -369,11 +356,11 @@ export default function Home() {
     const currentDateTime = now.toISOString().slice(0, 16);
     const currentTime = now.toTimeString().slice(0, 5);
 
-    setFeedingData({ amount: '', notes: '', timestamp: currentDateTime });
-    setSleepData({ duration: '', notes: '', startTime: currentTime, endTime: '', timestamp: currentDateTime });
-    setDiaperData({ type: '', notes: '', timestamp: currentDateTime });
-    setPoopData({ consistency: '', notes: '', timestamp: currentDateTime });
-    setDoctorData({
+    updateFormData('feeding', { amount: '', notes: '', timestamp: currentDateTime });
+    updateFormData('sleep', { duration: '', notes: '', startTime: currentTime, endTime: '', timestamp: currentDateTime });
+    updateFormData('diaper', { type: '', notes: '', timestamp: currentDateTime });
+    updateFormData('poop', { consistency: '', notes: '', timestamp: currentDateTime });
+    updateFormData('doctor', {
       appointmentType: '',
       notes: '',
       questions: '',
@@ -382,13 +369,13 @@ export default function Home() {
       doctorName: '',
       hospitalName: ''
     });
-    setTemperatureData({
+    updateFormData('temperature', {
       temperature: '',
       unit: 'celsius',
       notes: '',
       timestamp: currentDateTime
     });
-    setMedicationData({
+    updateFormData('medication', {
       medicationName: '',
       dosage: '',
       frequency: '',
@@ -396,7 +383,7 @@ export default function Home() {
       notes: '',
       timestamp: currentDateTime
     });
-    setVaccinationData({
+    updateFormData('vaccination', {
       vaccineName: '',
       doseNumber: '',
       administeredBy: '',
@@ -404,14 +391,14 @@ export default function Home() {
       notes: '',
       timestamp: currentDateTime
     });
-    setMilestoneData({
+    updateFormData('milestone', {
       milestoneType: '',
       description: '',
       dateAchieved: '',
       notes: '',
       timestamp: currentDateTime
     });
-    setGrowthData({
+    updateFormData('growth', {
       weight: '',
       height: '',
       headCircumference: '',
@@ -419,7 +406,7 @@ export default function Home() {
       notes: '',
       timestamp: currentDateTime
     });
-    setSymptomsData({
+    updateFormData('symptoms', {
       symptomType: '',
       severity: 'mild',
       description: '',
@@ -431,21 +418,54 @@ export default function Home() {
     setErrors({});
   };
 
+  const handleCardClick = (activityType: string) => {
+    if (expandedCard === activityType) {
+      setExpandedCard(null);
+    } else {
+      setSelectedActivity(activityType);
+      setEditingActivity(null);
+      setExpandedCard(activityType);
+    }
+  };
+
+  const handleCardHeaderClick = (e: React.MouseEvent, activityType: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleCardClick(activityType);
+  };
+
+  const handleFormClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const closeExpandedCard = () => {
+    setExpandedCard(null);
+  };
+
+  // Use click outside hook to close expanded card when clicking outside
+  const expandedCardRef = useClickOutside(() => {
+    if (expandedCard) {
+      closeExpandedCard();
+    }
+  });
+
   const openEditDialog = (activity: BabyActivity) => {
     setEditingActivity(activity);
     setSelectedActivity(activity.type);
+    setExpandedCard(activity.type);
 
     // Populate form with existing data
     switch (activity.type) {
       case 'feeding':
-        setFeedingData({
+        updateFeedingData({
           amount: activity.details.amount || '',
           notes: activity.details.notes || '',
           timestamp: activity.timestamp.toISOString().slice(0, 16)
         });
         break;
       case 'sleep':
-        setSleepData({
+        updateSleepData({
           duration: activity.details.duration || '',
           notes: activity.details.notes || '',
           startTime: activity.details.startTime || '',
@@ -454,28 +474,86 @@ export default function Home() {
         });
         break;
       case 'diaper':
-        setDiaperData({
+        updateDiaperData({
           type: activity.details.type || '',
           notes: activity.details.notes || '',
           timestamp: activity.timestamp.toISOString().slice(0, 16)
         });
         break;
       case 'poop':
-        setPoopData({
+        updatePoopData({
           consistency: activity.details.consistency || '',
           notes: activity.details.notes || '',
           timestamp: activity.timestamp.toISOString().slice(0, 16)
         });
         break;
       case 'doctor':
-        setDoctorData({
+        updateDoctorData({
           appointmentType: activity.details.appointmentType || '',
           notes: activity.details.notes || '',
           questions: activity.details.questions || '',
-          date: activity.details.date || new Date(activity.timestamp).toISOString().slice(0, 16),
+          date: activity.details.date || activity.timestamp.toISOString().slice(0, 16),
           location: activity.details.location || '',
           doctorName: activity.details.doctorName || '',
           hospitalName: activity.details.hospitalName || ''
+        });
+        break;
+      case 'temperature':
+        updateTemperatureData({
+          temperature: activity.details.temperature || '',
+          unit: activity.details.unit || 'celsius',
+          notes: activity.details.notes || '',
+          timestamp: activity.timestamp.toISOString().slice(0, 16)
+        });
+        break;
+      case 'medication':
+        updateMedicationData({
+          medicationName: activity.details.medicationName || '',
+          dosage: activity.details.dosage || '',
+          frequency: activity.details.frequency || '',
+          duration: activity.details.duration || '',
+          notes: activity.details.notes || '',
+          timestamp: activity.timestamp.toISOString().slice(0, 16)
+        });
+        break;
+      case 'vaccination':
+        updateVaccinationData({
+          vaccineName: activity.details.vaccineName || '',
+          doseNumber: activity.details.doseNumber || '',
+          administeredBy: activity.details.administeredBy || '',
+          nextDueDate: activity.details.nextDueDate || '',
+          notes: activity.details.notes || '',
+          timestamp: activity.timestamp.toISOString().slice(0, 16)
+        });
+        break;
+      case 'milestone':
+        updateMilestoneData({
+          milestoneType: activity.details.milestoneType || '',
+          description: activity.details.description || '',
+          dateAchieved: activity.details.dateAchieved || '',
+          notes: activity.details.notes || '',
+          timestamp: activity.timestamp.toISOString().slice(0, 16)
+        });
+        break;
+      case 'growth':
+        updateGrowthData({
+          weight: activity.details.weight || '',
+          height: activity.details.height || '',
+          headCircumference: activity.details.headCircumference || '',
+          date: activity.details.date || activity.timestamp.toISOString().slice(0, 16),
+          notes: activity.details.notes || '',
+          timestamp: activity.timestamp.toISOString().slice(0, 16)
+        });
+        break;
+      case 'symptoms':
+        updateSymptomsData({
+          symptomType: activity.details.symptomType || '',
+          severity: activity.details.severity || 'mild',
+          description: activity.details.description || '',
+          startDate: activity.details.startDate || '',
+          endDate: activity.details.endDate || '',
+          notes: activity.details.notes || '',
+          timestamp: activity.timestamp.toISOString().slice(0, 16)
         });
         break;
     }
@@ -522,16 +600,15 @@ export default function Home() {
       try {
         const calendarEvent = createDoctorAppointmentEvent(activity.details);
         addToAppleCalendar(calendarEvent);
-        toast({
+        success({
           title: "Calendar Added!",
           description: "Doctor appointment added to Apple Calendar.",
         });
-      } catch (error) {
-        console.error("Error adding to calendar:", error);
-        toast({
+      } catch (err) {
+        console.error("Error adding to calendar:", err);
+        error({
           title: "Calendar Error",
           description: "Failed to add to Apple Calendar. Please try again.",
-          variant: "destructive",
         });
       }
     }
@@ -885,43 +962,43 @@ export default function Home() {
 
       <div className="relative z-10 flex flex-col flex-grow">
         {/* Fixed Header */}
-        {/* nav bar */}
         <motion.header
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          //  border-border/40 bg-background/80 border-b
-          className="fixed top-5 left-0 right-0 z-10 flex items-center backdrop-blur-lg"
+          className="fixed top-5 left-0 right-0 z-10 flex items-center max-sm:w-[95%] max-sm:mx-auto"
         >
-          <IOSCard variant="glass" intensity="high" className="container mx-auto px-4 py-3" classValue=" flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <AnimatedHamburger
-                isOpen={isSidebarOpen}
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="lg:hidden"
-              />
-              <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-pink-600 rounded-full flex items-center justify-center">
-                <Baby className="h-5 w-5 text-white" />
-              </div>
-              <h1 className="md:text-2xl text-xl max-lg:!hidden font-bold bg-gradient-to-r from-sky-600 to-pink-600 bg-clip-text text-transparent">
-                Baby Tracker
-              </h1>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              <div className="hidden sm:flex items-center space-x-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-sky-500 to-pink-600 rounded-full flex items-center justify-center">
-                  <span className="text-white text-sm font-semibold">
-                    {getUserInitials(user.displayName || '')}
-                  </span>
+          <IOSCard variant="glass" intensity="high" className="container mx-auto px-4 py-3 items-center justify-between max-sm:w-full">
+            <IOSCardContent className="flex w-full justify-between pb-0">
+              <div className="flex items-center space-x-3">
+                <AnimatedHamburger
+                  isOpen={isSidebarOpen}
+                  onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                  className="lg:hidden"
+                />
+                <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-pink-600 rounded-full flex items-center justify-center">
+                  <Baby className="h-5 w-5 text-white" />
                 </div>
+                <h1 className="md:text-2xl text-xl max-lg:!hidden font-bold bg-gradient-to-r from-sky-600 to-pink-600 bg-clip-text text-transparent">
+                  Baby Tracker
+                </h1>
               </div>
-              <AnimatedHamburger
-                isOpen={isSidebarOpen}
-                onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                className="hidden lg:flex"
-              />
-            </div>
+
+              <div className="flex items-center space-x-4">
+                <div className="hidden sm:flex items-center space-x-2">
+                  <div className="w-8 h-8 bg-gradient-to-br from-sky-500 to-pink-600 rounded-full flex items-center justify-center">
+                    <span className="text-white text-sm font-semibold">
+                      {getUserInitials(user.displayName || '')}
+                    </span>
+                  </div>
+                </div>
+                <AnimatedHamburger
+                  isOpen={isSidebarOpen}
+                  onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                  className="hidden lg:flex"
+                />
+              </div>
+            </IOSCardContent>
           </IOSCard>
         </motion.header>
 
@@ -930,7 +1007,6 @@ export default function Home() {
           initial={{ x: 500 }}
           animate={{ x: isSidebarOpen ? 0 : 500 }}
           transition={{ duration: 0.3, ease: "easeInOut" }}
-          //  bg-background/95 backdrop-blur-xl border-l border-border/40
           className="fixed top-5 right-5 h-fit lg:w-[350px] w-[90%] z-40 shadow-2xl"
         >
           <IOSCard variant="glass" intensity="high" className="p-6">
@@ -1069,14 +1145,15 @@ export default function Home() {
         {/* Main content */}
         <main className="container mx-auto px-4 pt-28 pb-8 flex-grow">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Activity Cards */}
-            <div className="lg:col-span-2">
+            {/* Left Column - Activity Cards and Recent Activities */}
+            <div className="lg:col-span-2 space-y-8">
+              {/* Activity Cards */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.2 }}
               >
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {[
                     { type: 'feeding', icon: Milk, title: 'Feeding', description: 'Track feeding time and amount' },
                     { type: 'sleep', icon: Moon, title: 'Sleep', description: 'Monitor sleep patterns' },
@@ -1084,11 +1161,6 @@ export default function Home() {
                     { type: 'poop', icon: AlertCircle, title: 'Poop Time', description: 'Track bowel movements' },
                     { type: 'doctor', icon: Stethoscope, title: 'Doctor', description: 'Appointments & notes' },
                     { type: 'temperature', icon: Thermometer, title: 'Temperature', description: 'Monitor body temperature' },
-                    { type: 'medication', icon: Pill, title: 'Medication', description: 'Track medications given' },
-                    { type: 'vaccination', icon: Shield, title: 'Vaccination', description: 'Record immunizations' },
-                    { type: 'milestone', icon: Star, title: 'Milestone', description: 'Log developmental milestones' },
-                    { type: 'growth', icon: TrendingUp, title: 'Growth', description: 'Track growth measurements' },
-                    { type: 'symptoms', icon: Heart, title: 'Symptoms', description: 'Monitor illness symptoms' },
                   ].map((activity, index) => (
                     <motion.div
                       key={activity.type}
@@ -1100,7 +1172,7 @@ export default function Home() {
                       <IOSCard
                         variant="glass"
                         intensity="medium"
-                        className="h-full py-4"
+                        className="h-full py-4 cursor-pointer hover:shadow-lg transition-all duration-300"
                         onClick={() => {
                           setSelectedActivity(activity.type);
                           setEditingActivity(null);
@@ -1123,7 +1195,66 @@ export default function Home() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="w-full group-hover:bg-gradient-to-r group-hover:from-sky-500 group-hover:to-pink-600 group-hover:text-white transition-all duration-300"
+                            className="w-full group-hover:bg-gradient-to-r group-hover:from-sky-500 group-hover:to-pink-600 group-hover:text-white rounded-2xl transition-all duration-500"
+                          >
+                            <Plus className="mr-2 h-4 w-4" />
+                            Add Entry
+                          </Button>
+                        </CardContent>
+                      </IOSCard>
+                    </motion.div>
+                  ))}
+                </div>
+              </motion.div>
+
+              {/* Additional Activity Cards */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+              >
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {[
+                    { type: 'medication', icon: Pill, title: 'Medication', description: 'Track medications' },
+                    { type: 'vaccination', icon: Shield, title: 'Vaccination', description: 'Record immunizations' },
+                    { type: 'milestone', icon: Star, title: 'Milestone', description: 'Log achievements' },
+                    { type: 'growth', icon: TrendingUp, title: 'Growth', description: 'Track measurements' },
+                    { type: 'symptoms', icon: Heart, title: 'Symptoms', description: 'Monitor illness' },
+                  ].map((activity, index) => (
+                    <motion.div
+                      key={activity.type}
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.3, delay: 0.1 * index }}
+                      className="group"
+                    >
+                      <IOSCard
+                        variant="glass"
+                        intensity="medium"
+                        className="h-full py-4 cursor-pointer hover:shadow-lg transition-all duration-300"
+                        onClick={() => {
+                          setSelectedActivity(activity.type);
+                          setEditingActivity(null);
+                          setIsDialogOpen(true);
+                        }}>
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center space-x-3">
+                            <div className="p-2 bg-gradient-to-br from-sky-500 to-pink-600 rounded-lg">
+                              <activity.icon className="h-5 w-5 text-white" />
+                            </div>
+                            <div>
+                              <CardTitle className="text-lg">{activity.title}</CardTitle>
+                              <CardDescription className="text-sm">
+                                {activity.description}
+                              </CardDescription>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full group-hover:bg-gradient-to-r group-hover:from-sky-500 group-hover:to-pink-600 group-hover:text-white rounded-2xl transition-all duration-500"
                           >
                             <Plus className="mr-2 h-4 w-4" />
                             Add Entry
@@ -1220,13 +1351,13 @@ export default function Home() {
               </motion.div>
             </div>
 
-            {/* Stats Sidebar */}
-            <div className="lg:col-span-1">
+            {/* Right Column - Stats and Advanced Features */}
+            <div className="lg:col-span-1 space-y-6">
+              {/* Today's Summary */}
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.5, delay: 0.6 }}
-                className="space-y-6"
               >
                 <IOSCard variant="glass" intensity="medium">
                   <IOSCardHeader>
@@ -1262,7 +1393,50 @@ export default function Home() {
                     </div>
                   </IOSCardContent>
                 </IOSCard>
+              </motion.div>
 
+              {/* AI Insights */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: 0.7 }}
+              >
+                <AIInsights activities={activities} babyId={babyId} />
+              </motion.div>
+
+              {/* Child Profile */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: 0.8 }}
+              >
+                <ChildProfile babyId={babyId} currentAge={currentAge} />
+              </motion.div>
+
+              {/* Multi-User Sharing */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: 0.9 }}
+              >
+                <MultiUserShare babyId={babyId} currentUserId={user.uid} />
+              </motion.div>
+
+              {/* Visual Timeline */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: 1.0 }}
+              >
+                <VisualTimeline babyId={babyId} activities={activities} />
+              </motion.div>
+
+              {/* Upcoming */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5, delay: 1.1 }}
+              >
                 <IOSCard variant="liquid" intensity="medium">
                   <IOSCardHeader>
                     <IOSCardTitle className="flex items-center space-x-2">
@@ -1305,283 +1479,731 @@ export default function Home() {
         <footer className="relative z-10 text-center py-4 text-sm text-muted-foreground border-t border-border/40 bg-background/80 backdrop-blur-sm">
           Motivated by my first born. Made by abelbejiga.com
         </footer>
-      </div >
+      </div>
 
       {/* Activity Dialog */}
-      <IOSCard variant="glass" intensity="high" className="!z-50">
-        <Dialog open={isDialogOpen} onOpenChange={(open) => {
-          setIsDialogOpen(open);
-          if (!open) {
-            setEditingActivity(null);
-            resetForms();
-          }
-        }}>
-          {/*  bg-background/95 */}
-          <DialogContent className="sm:max-w-md backdrop-blur-xl bg-black/20">
-            <DialogHeader>
-              <DialogTitle className="flex items-center space-x-2">
-                {selectedActivity && getActivityIcon(selectedActivity)}
-                <span>
-                  {editingActivity ? 'Edit' : 'Add'} {selectedActivity?.charAt(0).toUpperCase() + selectedActivity?.slice(1)} Entry
-                </span>
-              </DialogTitle>
-              <DialogDescription>
-                {editingActivity ? 'Update' : 'Track'} your baby's {selectedActivity} activity
-              </DialogDescription>
-            </DialogHeader>
+      <Dialog open={isDialogOpen} onOpenChange={(open) => {
+        setIsDialogOpen(open);
+        if (!open) {
+          setEditingActivity(null);
+          resetForms();
+        }
+      }}>
+        <DialogContent className="sm:max-w-md backdrop-blur-xl bg-black/20">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              {selectedActivity && getActivityIcon(selectedActivity)}
+              <span>
+                {editingActivity ? 'Edit' : 'Add'} {selectedActivity?.charAt(0).toUpperCase() + selectedActivity?.slice(1)} Entry
+              </span>
+            </DialogTitle>
+            <DialogDescription>
+              {editingActivity ? 'Update' : 'Track'} your baby's {selectedActivity} activity
+            </DialogDescription>
+          </DialogHeader>
 
-            <div className="space-y-4">
-              {selectedActivity === 'feeding' && (
-                <div className="space-y-4">
+          <div className="space-y-4">
+            {selectedActivity === 'feeding' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="amount">Amount (oz) *</Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.1"
+                    value={feedingData.amount}
+                    onChange={(e) => updateFeedingData({ amount: e.target.value })}
+                    placeholder="Enter amount in ounces"
+                    className={errors.amount ? 'border-red-500' : ''}
+                  />
+                  {errors.amount && <p className="text-red-500 text-sm mt-1">{errors.amount}</p>}
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="feeding-time">Time</Label>
+                  <Input
+                    id="feeding-time"
+                    type="datetime-local"
+                    value={feedingData.timestamp}
+                    onChange={(e) => updateFeedingData({ timestamp: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="feeding-notes">Notes</Label>
+                  <Textarea
+                    id="feeding-notes"
+                    value={feedingData.notes}
+                    onChange={(e) => updateFeedingData({ notes: e.target.value })}
+                    placeholder="Add any notes about the feeding..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity
+                    ? updateActivity(editingActivity.id, 'feeding', feedingData)
+                    : addActivity('feeding', feedingData)
+                  }
+                  className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Feeding Entry
+                </Button>
+              </div>
+            )}
+
+            {selectedActivity === 'sleep' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="duration">Duration (hours) *</Label>
+                  <Input
+                    id="duration"
+                    type="number"
+                    step="0.1"
+                    value={sleepData.duration}
+                    onChange={(e) => updateSleepData({ duration: e.target.value })}
+                    placeholder="Enter sleep duration"
+                    className={errors.duration ? 'border-red-500' : ''}
+                  />
+                  {errors.duration && <p className="text-red-500 text-sm mt-1">{errors.duration}</p>}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="pb-1" htmlFor="amount">Amount (oz) *</Label>
+                    <Label className="pb-1" htmlFor="start-time">Start Time</Label>
                     <Input
-                      id="amount"
+                      id="start-time"
+                      type="time"
+                      value={sleepData.startTime}
+                      onChange={(e) => updateSleepData({ startTime: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label className="pb-1" htmlFor="end-time">End Time</Label>
+                    <Input
+                      id="end-time"
+                      type="time"
+                      value={sleepData.endTime}
+                      onChange={(e) => updateSleepData({ endTime: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="sleep-time">Date</Label>
+                  <Input
+                    id="sleep-time"
+                    type="datetime-local"
+                    value={sleepData.timestamp}
+                    onChange={(e) => updateSleepData({ timestamp: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="sleep-notes">Notes</Label>
+                  <Textarea
+                    id="sleep-notes"
+                    value={sleepData.notes}
+                    onChange={(e) => updateSleepData({ notes: e.target.value })}
+                    placeholder="Add any notes about the sleep..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity
+                    ? updateActivity(editingActivity.id, 'sleep', sleepData)
+                    : addActivity('sleep', sleepData)
+                  }
+                  className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Sleep Entry
+                </Button>
+              </div>
+            )}
+
+            {selectedActivity === 'diaper' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="diaper-type">Type *</Label>
+                  <Select value={diaperData.type} onValueChange={(value) => updateDiaperData({ type: value })}>
+                    <SelectTrigger className={errors.type ? 'border-red-500' : ''}>
+                      <SelectValue placeholder="Select diaper type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="wet">Wet</SelectItem>
+                      <SelectItem value="dirty">Dirty</SelectItem>
+                      <SelectItem value="mixed">Mixed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.type && <p className="text-red-500 text-sm mt-1">{errors.type}</p>}
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="diaper-time">Time</Label>
+                  <Input
+                    id="diaper-time"
+                    type="datetime-local"
+                    value={diaperData.timestamp}
+                    onChange={(e) => updateDiaperData({ timestamp: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="diaper-notes">Notes</Label>
+                  <Textarea
+                    id="diaper-notes"
+                    value={diaperData.notes}
+                    onChange={(e) => updateDiaperData({ notes: e.target.value })}
+                    placeholder="Add any notes about the diaper change..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity
+                    ? updateActivity(editingActivity.id, 'diaper', diaperData)
+                    : addActivity('diaper', diaperData)
+                  }
+                  className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Diaper Entry
+                </Button>
+              </div>
+            )}
+
+            {selectedActivity === 'poop' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="consistency">Consistency *</Label>
+                  <Select value={poopData.consistency} onValueChange={(value) => updatePoopData({ consistency: value })}>
+                    <SelectTrigger className={errors.consistency ? 'border-red-500' : ''}>
+                      <SelectValue placeholder="Select consistency" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="hard">Hard</SelectItem>
+                      <SelectItem value="normal">Normal</SelectItem>
+                      <SelectItem value="soft">Soft</SelectItem>
+                      <SelectItem value="watery">Watery</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.consistency && <p className="text-red-500 text-sm mt-1">{errors.consistency}</p>}
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="poop-time">Time</Label>
+                  <Input
+                    id="poop-time"
+                    type="datetime-local"
+                    value={poopData.timestamp}
+                    onChange={(e) => updatePoopData({ timestamp: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="poop-notes">Notes</Label>
+                  <Textarea
+                    id="poop-notes"
+                    value={poopData.notes}
+                    onChange={(e) => updatePoopData({ notes: e.target.value })}
+                    placeholder="Add any notes about the poop..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity
+                    ? updateActivity(editingActivity.id, 'poop', poopData)
+                    : addActivity('poop', poopData)
+                  }
+                  className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Poop Entry
+                </Button>
+              </div>
+            )}
+
+            {selectedActivity === 'doctor' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="appointment-type">Appointment Type *</Label>
+                  <Select value={doctorData.appointmentType} onValueChange={(value) => updateDoctorData({ appointmentType: value })}>
+                    <SelectTrigger className={errors.appointmentType ? 'border-red-500' : ''}>
+                      <SelectValue placeholder="Select appointment type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="checkup">Regular Checkup</SelectItem>
+                      <SelectItem value="vaccination">Vaccination</SelectItem>
+                      <SelectItem value="sick">Sick Visit</SelectItem>
+                      <SelectItem value="emergency">Emergency</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.appointmentType && <p className="text-red-500 text-sm mt-1">{errors.appointmentType}</p>}
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="date">Date *</Label>
+                  <Input
+                    id="date"
+                    type="datetime-local"
+                    value={doctorData.date}
+                    onChange={(e) => updateDoctorData({ date: e.target.value })}
+                    className={errors.date ? 'border-red-500' : ''}
+                  />
+                  {errors.date && <p className="text-red-500 text-sm mt-1">{errors.date}</p>}
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="doctor-notes">Doctor Notes</Label>
+                  <Textarea
+                    id="doctor-notes"
+                    value={doctorData.notes}
+                    onChange={(e) => updateDoctorData({ notes: e.target.value })}
+                    placeholder="Add doctor's notes and recommendations..."
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="questions">Questions to Ask</Label>
+                  <Textarea
+                    id="questions"
+                    value={doctorData.questions}
+                    onChange={(e) => updateDoctorData({ questions: e.target.value })}
+                    placeholder="List questions for the next visit..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity
+                    ? updateActivity(editingActivity.id, 'doctor', doctorData)
+                    : addActivity('doctor', doctorData)
+                  }
+                  className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Doctor Entry
+                </Button>
+              </div>
+            )}
+
+            {selectedActivity === 'temperature' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="temperature">Temperature *</Label>
+                  <Input
+                    id="temperature"
+                    type="number"
+                    step="0.1"
+                    value={temperatureData.temperature}
+                    onChange={(e) => updateTemperatureData({ temperature: e.target.value })}
+                    placeholder="Enter temperature"
+                    className={errors.temperature ? 'border-red-500' : ''}
+                  />
+                  {errors.temperature && <p className="text-red-500 text-sm mt-1">{errors.temperature}</p>}
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="unit">Unit</Label>
+                  <Select value={temperatureData.unit} onValueChange={(value) => updateTemperatureData({ unit: value as 'celsius' | 'fahrenheit' })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="celsius">Celsius (°C)</SelectItem>
+                      <SelectItem value="fahrenheit">Fahrenheit (°F)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="temperature-time">Time</Label>
+                  <Input
+                    id="temperature-time"
+                    type="datetime-local"
+                    value={temperatureData.timestamp}
+                    onChange={(e) => updateTemperatureData({ timestamp: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="temperature-notes">Notes</Label>
+                  <Textarea
+                    id="temperature-notes"
+                    value={temperatureData.notes}
+                    onChange={(e) => updateTemperatureData({ notes: e.target.value })}
+                    placeholder="Add any notes about the temperature reading..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity
+                    ? updateActivity(editingActivity.id, 'temperature', temperatureData)
+                    : addActivity('temperature', temperatureData)
+                  }
+                  className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Temperature Entry
+                </Button>
+              </div>
+            )}
+
+            {selectedActivity === 'medication' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="medication-name">Medication Name *</Label>
+                  <Input
+                    id="medication-name"
+                    value={medicationData.medicationName}
+                    onChange={(e) => updateMedicationData({ medicationName: e.target.value })}
+                    placeholder="Enter medication name"
+                    className={errors.medicationName ? 'border-red-500' : ''}
+                  />
+                  {errors.medicationName && <p className="text-red-500 text-sm mt-1">{errors.medicationName}</p>}
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="dosage">Dosage *</Label>
+                  <Input
+                    id="dosage"
+                    value={medicationData.dosage}
+                    onChange={(e) => updateMedicationData({ dosage: e.target.value })}
+                    placeholder="Enter dosage (e.g., 5ml, 1 tablet)"
+                    className={errors.dosage ? 'border-red-500' : ''}
+                  />
+                  {errors.dosage && <p className="text-red-500 text-sm mt-1">{errors.dosage}</p>}
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="frequency">Frequency</Label>
+                  <Input
+                    id="frequency"
+                    value={medicationData.frequency}
+                    onChange={(e) => updateMedicationData({ frequency: e.target.value })}
+                    placeholder="Enter frequency (e.g., twice daily, every 4 hours)"
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="duration">Duration</Label>
+                  <Input
+                    id="duration"
+                    value={medicationData.duration}
+                    onChange={(e) => updateMedicationData({ duration: e.target.value })}
+                    placeholder="Enter duration (e.g., 7 days, 2 weeks)"
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="medication-time">Time</Label>
+                  <Input
+                    id="medication-time"
+                    type="datetime-local"
+                    value={medicationData.timestamp}
+                    onChange={(e) => updateMedicationData({ timestamp: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="medication-notes">Notes</Label>
+                  <Textarea
+                    id="medication-notes"
+                    value={medicationData.notes}
+                    onChange={(e) => updateMedicationData({ notes: e.target.value })}
+                    placeholder="Add any notes about the medication..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity
+                    ? updateActivity(editingActivity.id, 'medication', medicationData)
+                    : addActivity('medication', medicationData)
+                  }
+                  className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Medication Entry
+                </Button>
+              </div>
+            )}
+
+            {selectedActivity === 'vaccination' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="vaccine-name">Vaccine Name *</Label>
+                  <Input
+                    id="vaccine-name"
+                    value={vaccinationData.vaccineName}
+                    onChange={(e) => updateVaccinationData({ vaccineName: e.target.value })}
+                    placeholder="Enter vaccine name"
+                    className={errors.vaccineName ? 'border-red-500' : ''}
+                  />
+                  {errors.vaccineName && <p className="text-red-500 text-sm mt-1">{errors.vaccineName}</p>}
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="dose-number">Dose Number</Label>
+                  <Input
+                    id="dose-number"
+                    value={vaccinationData.doseNumber}
+                    onChange={(e) => updateVaccinationData({ doseNumber: e.target.value })}
+                    placeholder="Enter dose number (e.g., 1st, 2nd, booster)"
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="administered-by">Administered By</Label>
+                  <Input
+                    id="administered-by"
+                    value={vaccinationData.administeredBy}
+                    onChange={(e) => updateVaccinationData({ administeredBy: e.target.value })}
+                    placeholder="Enter who administered the vaccine"
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="next-due">Next Due Date</Label>
+                  <Input
+                    id="next-due"
+                    type="date"
+                    value={vaccinationData.nextDueDate}
+                    onChange={(e) => updateVaccinationData({ nextDueDate: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="vaccination-time">Time</Label>
+                  <Input
+                    id="vaccination-time"
+                    type="datetime-local"
+                    value={vaccinationData.timestamp}
+                    onChange={(e) => updateVaccinationData({ timestamp: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="vaccination-notes">Notes</Label>
+                  <Textarea
+                    id="vaccination-notes"
+                    value={vaccinationData.notes}
+                    onChange={(e) => updateVaccinationData({ notes: e.target.value })}
+                    placeholder="Add any notes about the vaccination..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity
+                    ? updateActivity(editingActivity.id, 'vaccination', vaccinationData)
+                    : addActivity('vaccination', vaccinationData)
+                  }
+                  className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Vaccination Entry
+                </Button>
+              </div>
+            )}
+
+            {selectedActivity === 'milestone' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="milestone-type">Milestone Type *</Label>
+                  <Select value={milestoneData.milestoneType} onValueChange={(value) => updateMilestoneData({ milestoneType: value })}>
+                    <SelectTrigger className={errors.milestoneType ? 'border-red-500' : ''}>
+                      <SelectValue placeholder="Select milestone type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="physical">Physical</SelectItem>
+                      <SelectItem value="cognitive">Cognitive</SelectItem>
+                      <SelectItem value="social">Social</SelectItem>
+                      <SelectItem value="emotional">Emotional</SelectItem>
+                      <SelectItem value="language">Language</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {errors.milestoneType && <p className="text-red-500 text-sm mt-1">{errors.milestoneType}</p>}
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={milestoneData.description}
+                    onChange={(e) => updateMilestoneData({ description: e.target.value })}
+                    placeholder="Describe the milestone achievement..."
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="date-achieved">Date Achieved</Label>
+                  <Input
+                    id="date-achieved"
+                    type="date"
+                    value={milestoneData.dateAchieved}
+                    onChange={(e) => updateMilestoneData({ dateAchieved: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="milestone-time">Time Recorded</Label>
+                  <Input
+                    id="milestone-time"
+                    type="datetime-local"
+                    value={milestoneData.timestamp}
+                    onChange={(e) => updateMilestoneData({ timestamp: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="milestone-notes">Notes</Label>
+                  <Textarea
+                    id="milestone-notes"
+                    value={milestoneData.notes}
+                    onChange={(e) => updateMilestoneData({ notes: e.target.value })}
+                    placeholder="Add any notes about the milestone..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity
+                    ? updateActivity(editingActivity.id, 'milestone', milestoneData)
+                    : addActivity('milestone', milestoneData)
+                  }
+                  className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Milestone Entry
+                </Button>
+              </div>
+            )}
+
+            {selectedActivity === 'growth' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <Label className="pb-1" htmlFor="weight">Weight (kg)</Label>
+                    <Input
+                      id="weight"
+                      type="number"
+                      step="0.01"
+                      value={growthData.weight}
+                      onChange={(e) => updateGrowthData({ weight: e.target.value })}
+                      placeholder="Weight"
+                    />
+                  </div>
+                  <div>
+                    <Label className="pb-1" htmlFor="height">Height (cm)</Label>
+                    <Input
+                      id="height"
                       type="number"
                       step="0.1"
-                      value={feedingData.amount}
-                      onChange={(e) => setFeedingData(prev => ({ ...prev, amount: e.target.value }))}
-                      placeholder="Enter amount in ounces"
-                      className={errors.amount ? 'border-red-500' : ''}
+                      value={growthData.height}
+                      onChange={(e) => updateGrowthData({ height: e.target.value })}
+                      placeholder="Height"
                     />
-                    {errors.amount && <p className="text-red-500 text-sm mt-1">{errors.amount}</p>}
                   </div>
                   <div>
-                    <Label className="pb-1" htmlFor="feeding-time">Time</Label>
+                    <Label className="pb-1" htmlFor="head-circumference">Head Circ. (cm)</Label>
                     <Input
-                      id="feeding-time"
-                      type="datetime-local"
-                      value={feedingData.timestamp}
-                      onChange={(e) => setFeedingData(prev => ({ ...prev, timestamp: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <Label className="pb-1" htmlFor="feeding-notes">Notes</Label>
-                    <Textarea
-                      id="feeding-notes"
-                      value={feedingData.notes}
-                      onChange={(e) => setFeedingData(prev => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Add any notes about the feeding..."
-                    />
-                  </div>
-                  <Button
-                    onClick={() => editingActivity
-                      ? updateActivity(editingActivity.id, 'feeding', feedingData)
-                      : addActivity('feeding', feedingData)
-                    }
-                    className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    {editingActivity ? 'Update' : 'Add'} Feeding Entry
-                  </Button>
-                </div>
-              )}
-
-              {selectedActivity === 'sleep' && (
-                <div className="space-y-4">
-                  <div>
-                    <Label className="pb-1" htmlFor="duration">Duration (hours) *</Label>
-                    <Input
-                      id="duration"
+                      id="head-circumference"
                       type="number"
                       step="0.1"
-                      value={sleepData.duration}
-                      onChange={(e) => setSleepData(prev => ({ ...prev, duration: e.target.value }))}
-                      placeholder="Enter sleep duration"
-                      className={errors.duration ? 'border-red-500' : ''}
+                      value={growthData.headCircumference}
+                      onChange={(e) => updateGrowthData({ headCircumference: e.target.value })}
+                      placeholder="Head Circ."
                     />
-                    {errors.duration && <p className="text-red-500 text-sm mt-1">{errors.duration}</p>}
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label className="pb-1" htmlFor="start-time">Start Time</Label>
-                      <Input
-                        id="start-time"
-                        type="time"
-                        value={sleepData.startTime}
-                        onChange={(e) => setSleepData(prev => ({ ...prev, startTime: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <Label className="pb-1" htmlFor="end-time">End Time</Label>
-                      <Input
-                        id="end-time"
-                        type="time"
-                        value={sleepData.endTime}
-                        onChange={(e) => setSleepData(prev => ({ ...prev, endTime: e.target.value }))}
-                      />
-                    </div>
-                  </div>
+                </div>
+                {errors.growth && <p className="text-red-500 text-sm mt-1">{errors.growth}</p>}
+                <div>
+                  <Label className="pb-1" htmlFor="growth-date">Date</Label>
+                  <Input
+                    id="growth-date"
+                    type="date"
+                    value={growthData.date}
+                    onChange={(e) => updateGrowthData({ date: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="growth-time">Time Recorded</Label>
+                  <Input
+                    id="growth-time"
+                    type="datetime-local"
+                    value={growthData.timestamp}
+                    onChange={(e) => updateGrowthData({ timestamp: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="growth-notes">Notes</Label>
+                  <Textarea
+                    id="growth-notes"
+                    value={growthData.notes}
+                    onChange={(e) => updateGrowthData({ notes: e.target.value })}
+                    placeholder="Add any notes about the growth measurements..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity
+                    ? updateActivity(editingActivity.id, 'growth', growthData)
+                    : addActivity('growth', growthData)
+                  }
+                  className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Growth Entry
+                </Button>
+              </div>
+            )}
+
+            {selectedActivity === 'symptoms' && (
+              <div className="space-y-4">
+                <div>
+                  <Label className="pb-1" htmlFor="symptom-type">Symptom Type *</Label>
+                  <Input
+                    id="symptom-type"
+                    value={symptomsData.symptomType}
+                    onChange={(e) => updateSymptomsData({ symptomType: e.target.value })}
+                    placeholder="Enter symptom type"
+                    className={errors.symptomType ? 'border-red-500' : ''}
+                  />
+                  {errors.symptomType && <p className="text-red-500 text-sm mt-1">{errors.symptomType}</p>}
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="severity">Severity</Label>
+                  <Select value={symptomsData.severity} onValueChange={(value) => updateSymptomsData({ severity: value as 'mild' | 'moderate' | 'severe' })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="mild">Mild</SelectItem>
+                      <SelectItem value="moderate">Moderate</SelectItem>
+                      <SelectItem value="severe">Severe</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={symptomsData.description}
+                    onChange={(e) => updateSymptomsData({ description: e.target.value })}
+                    placeholder="Describe the symptoms..."
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label className="pb-1" htmlFor="sleep-time">Date</Label>
+                    <Label className="pb-1" htmlFor="start-date">Start Date</Label>
                     <Input
-                      id="sleep-time"
-                      type="datetime-local"
-                      value={sleepData.timestamp}
-                      onChange={(e) => setSleepData(prev => ({ ...prev, timestamp: e.target.value }))}
+                      id="start-date"
+                      type="date"
+                      value={symptomsData.startDate}
+                      onChange={(e) => updateSymptomsData({ startDate: e.target.value })}
                     />
                   </div>
                   <div>
-                    <Label className="pb-1" htmlFor="sleep-notes">Notes</Label>
-                    <Textarea
-                      id="sleep-notes"
-                      value={sleepData.notes}
-                      onChange={(e) => setSleepData(prev => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Add any notes about the sleep..."
-                    />
-                  </div>
-                  <Button
-                    onClick={() => editingActivity
-                      ? updateActivity(editingActivity.id, 'sleep', sleepData)
-                      : addActivity('sleep', sleepData)
-                    }
-                    className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    {editingActivity ? 'Update' : 'Add'} Sleep Entry
-                  </Button>
-                </div>
-              )}
-
-              {selectedActivity === 'diaper' && (
-                <div className="space-y-4">
-                  <div>
-                    <Label className="pb-1" htmlFor="diaper-type">Type *</Label>
-                    <Select value={diaperData.type} onValueChange={(value) => setDiaperData(prev => ({ ...prev, type: value }))}>
-                      <SelectTrigger className={errors.type ? 'border-red-500' : ''}>
-                        <SelectValue placeholder="Select diaper type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="wet">Wet</SelectItem>
-                        <SelectItem value="dirty">Dirty</SelectItem>
-                        <SelectItem value="mixed">Mixed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {errors.type && <p className="text-red-500 text-sm mt-1">{errors.type}</p>}
-                  </div>
-                  <div>
-                    <Label className="pb-1" htmlFor="diaper-notes">Notes</Label>
-                    <Textarea
-                      id="diaper-notes"
-                      value={diaperData.notes}
-                      onChange={(e) => setDiaperData(prev => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Add any notes about the diaper change..."
-                    />
-                  </div>
-                  <Button
-                    onClick={() => editingActivity
-                      ? updateActivity(editingActivity.id, 'diaper', diaperData)
-                      : addActivity('diaper', diaperData)
-                    }
-                    className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    {editingActivity ? 'Update' : 'Add'} Diaper Entry
-                  </Button>
-                </div>
-              )}
-
-              {selectedActivity === 'poop' && (
-                <div className="space-y-4">
-                  <div>
-                    <Label className="pb-1" htmlFor="consistency">Consistency *</Label>
-                    <Select value={poopData.consistency} onValueChange={(value) => setPoopData(prev => ({ ...prev, consistency: value }))}>
-                      <SelectTrigger className={errors.consistency ? 'border-red-500' : ''}>
-                        <SelectValue placeholder="Select consistency" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="hard">Hard</SelectItem>
-                        <SelectItem value="normal">Normal</SelectItem>
-                        <SelectItem value="soft">Soft</SelectItem>
-                        <SelectItem value="watery">Watery</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {errors.consistency && <p className="text-red-500 text-sm mt-1">{errors.consistency}</p>}
-                  </div>
-                  <div>
-                    <Label className="pb-1" htmlFor="poop-notes">Notes</Label>
-                    <Textarea
-                      id="poop-notes"
-                      value={poopData.notes}
-                      onChange={(e) => setPoopData(prev => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Add any notes about the poop..."
-                    />
-                  </div>
-                  <Button
-                    onClick={() => editingActivity
-                      ? updateActivity(editingActivity.id, 'poop', poopData)
-                      : addActivity('poop', poopData)
-                    }
-                    className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    {editingActivity ? 'Update' : 'Add'} Poop Entry
-                  </Button>
-                </div>
-              )}
-
-              {selectedActivity === 'doctor' && (
-                <div className="space-y-4">
-                  <div>
-                    <Label className="pb-1" htmlFor="appointment-type">Appointment Type *</Label>
-                    <Select value={doctorData.appointmentType} onValueChange={(value) => setDoctorData(prev => ({ ...prev, appointmentType: value }))}>
-                      <SelectTrigger className={errors.appointmentType ? 'border-red-500' : ''}>
-                        <SelectValue placeholder="Select appointment type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="checkup">Regular Checkup</SelectItem>
-                        <SelectItem value="vaccination">Vaccination</SelectItem>
-                        <SelectItem value="sick">Sick Visit</SelectItem>
-                        <SelectItem value="emergency">Emergency</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    {errors.appointmentType && <p className="text-red-500 text-sm mt-1">{errors.appointmentType}</p>}
-                  </div>
-                  <div>
-                    <Label className="pb-1" htmlFor="date">Date *</Label>
+                    <Label className="pb-1" htmlFor="end-date">End Date</Label>
                     <Input
-                      id="date"
-                      type="datetime-local"
-                      value={doctorData.date}
-                      onChange={(e) => setDoctorData(prev => ({ ...prev, date: e.target.value }))}
-                      className={errors.date ? 'border-red-500' : ''}
-                    />
-                    {errors.date && <p className="text-red-500 text-sm mt-1">{errors.date}</p>}
-                  </div>
-                  <div>
-                    <Label className="pb-1" htmlFor="doctor-notes">Doctor Notes</Label>
-                    <Textarea
-                      id="doctor-notes"
-                      value={doctorData.notes}
-                      onChange={(e) => setDoctorData(prev => ({ ...prev, notes: e.target.value }))}
-                      placeholder="Add doctor's notes and recommendations..."
+                      id="end-date"
+                      type="date"
+                      value={symptomsData.endDate}
+                      onChange={(e) => updateSymptomsData({ endDate: e.target.value })}
                     />
                   </div>
-                  <div>
-                    <Label className="pb-1" htmlFor="questions">Questions to Ask</Label>
-                    <Textarea
-                      id="questions"
-                      value={doctorData.questions}
-                      onChange={(e) => setDoctorData(prev => ({ ...prev, questions: e.target.value }))}
-                      placeholder="List questions for the next visit..."
-                    />
-                  </div>
-                  <Button
-                    onClick={() => editingActivity
-                      ? updateActivity(editingActivity.id, 'doctor', doctorData)
-                      : addActivity('doctor', doctorData)
-                    }
-                    className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
-                  >
-                    <Save className="mr-2 h-4 w-4" />
-                    {editingActivity ? 'Update' : 'Add'} Doctor Entry
-                  </Button>
                 </div>
-              )}
-            </div>
-          </DialogContent>
-        </Dialog>
-      </IOSCard>
-    </div >
+                <div>
+                  <Label className="pb-1" htmlFor="symptoms-time">Time Recorded</Label>
+                  <Input
+                    id="symptoms-time"
+                    type="datetime-local"
+                    value={symptomsData.timestamp}
+                    onChange={(e) => updateSymptomsData({ timestamp: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label className="pb-1" htmlFor="symptoms-notes">Notes</Label>
+                  <Textarea
+                    id="symptoms-notes"
+                    value={symptomsData.notes}
+                    onChange={(e) => updateSymptomsData({ notes: e.target.value })}
+                    placeholder="Add any notes about the symptoms..."
+                  />
+                </div>
+                <Button
+                  onClick={() => editingActivity
+                    ? updateActivity(editingActivity.id, 'symptoms', symptomsData)
+                    : addActivity('symptoms', symptomsData)
+                  }
+                  className="w-full bg-gradient-to-r from-sky-500 to-pink-600 hover:from-sky-600 hover:to-pink-700"
+                >
+                  <Save className="mr-2 h-4 w-4" />
+                  {editingActivity ? 'Update' : 'Add'} Symptoms Entry
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

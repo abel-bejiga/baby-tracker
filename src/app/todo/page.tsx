@@ -29,6 +29,7 @@ import { auth } from "@/lib/firebase";
 import { collection, addDoc, query, where, getDocs, doc, deleteDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useToast } from "@/hooks/use-toast";
+import { IOSCard, IOSCardContent } from "@/components/ui/ios-card";
 
 interface TodoItem {
   id: string;
@@ -84,7 +85,7 @@ export default function TodoPage() {
       ...doc.data(),
       createdAt: doc.data().createdAt.toDate()
     })) as TodoItem[];
-    
+
     // Sort by creation date (newest first)
     todosData.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     setTodos(todosData);
@@ -115,7 +116,7 @@ export default function TodoPage() {
 
       setIsDialogOpen(false);
       resetForm();
-      
+
       // Show success toast
       toast({
         title: "Task Added!",
@@ -136,18 +137,18 @@ export default function TodoPage() {
 
     try {
       await updateDoc(doc(db, "users", user.uid, "todos", id), updates);
-      setTodos(prev => prev.map(todo => 
+      setTodos(prev => prev.map(todo =>
         todo.id === id ? { ...todo, ...updates } : todo
       ));
-      
+
       // Show success toast for completion toggle
       if ('completed' in updates) {
         const todo = todos.find(t => t.id === id);
         if (todo) {
           toast({
             title: updates.completed ? "Task Completed!" : "Task Reopened!",
-            description: updates.completed 
-              ? "Great job! Task marked as completed." 
+            description: updates.completed
+              ? "Great job! Task marked as completed."
               : "Task has been marked as active.",
           });
         }
@@ -167,7 +168,7 @@ export default function TodoPage() {
       const todoToDelete = todos.find(t => t.id === id);
       await deleteDoc(doc(db, "users", user.uid, "todos", id));
       setTodos(prev => prev.filter(todo => todo.id !== id));
-      
+
       // Show success toast
       if (todoToDelete) {
         toast({
@@ -212,22 +213,22 @@ export default function TodoPage() {
   };
 
   const filteredTodos = todos.filter(todo => {
-    const matchesFilter = filter === 'all' || 
-      (filter === 'active' && !todo.completed) || 
+    const matchesFilter = filter === 'all' ||
+      (filter === 'active' && !todo.completed) ||
       (filter === 'completed' && todo.completed);
-    
+
     const matchesTag = selectedTag === 'all' || todo.tag === selectedTag;
-    
+
     return matchesFilter && matchesTag;
   });
 
   const getTagStats = () => {
     const stats: { [key: string]: { total: number; completed: number } } = {};
-    
+
     TAGS.forEach(tag => {
       stats[tag.value] = { total: 0, completed: 0 };
     });
-    
+
     todos.forEach(todo => {
       if (stats[todo.tag]) {
         stats[todo.tag].total++;
@@ -236,7 +237,7 @@ export default function TodoPage() {
         }
       }
     });
-    
+
     return stats;
   };
 
@@ -280,7 +281,7 @@ export default function TodoPage() {
               </div>
             </div>
 
-            <Button 
+            <Button
               onClick={() => setIsDialogOpen(true)}
               className="bg-gradient-to-r from-sky-600 to-amber-600 hover:from-sky-700 hover:to-amber-700"
             >
@@ -291,43 +292,43 @@ export default function TodoPage() {
 
           {/* Stats Overview */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <Card className="bg-background/60 backdrop-blur-sm border-border/40">
-              <CardContent className="p-4 text-center">
+            <IOSCard variant="glass" className="h-full flex justify-center items-center">
+              <IOSCardContent className="p-4 text-center">
                 <div className="text-2xl font-bold mb-1 text-sky-600">{todos.length}</div>
                 <div className="text-sm text-muted-foreground">Total Tasks</div>
-              </CardContent>
-            </Card>
-            <Card className="bg-background/60 backdrop-blur-sm border-border/40">
+              </IOSCardContent>
+            </IOSCard>
+            <IOSCard variant="glass" className="h-full flex justify-center items-center">
               <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold mb-1 text-green-600">
                   {todos.filter(t => t.completed).length}
                 </div>
                 <div className="text-sm text-muted-foreground">Completed</div>
               </CardContent>
-            </Card>
-            <Card className="bg-background/60 backdrop-blur-sm border-border/40">
+            </IOSCard>
+            <IOSCard variant="glass" className="h-full flex justify-center items-center">
               <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold mb-1 text-orange-600">
                   {todos.filter(t => !t.completed).length}
                 </div>
                 <div className="text-sm text-muted-foreground">Active</div>
               </CardContent>
-            </Card>
-            <Card className="bg-background/60 backdrop-blur-sm border-border/40">
+            </IOSCard>
+            <IOSCard variant="glass" className="h-full flex justify-center items-center">
               <CardContent className="p-4 text-center">
                 <div className="text-2xl font-bold mb-1 text-amber-600">
                   {Math.round((todos.filter(t => t.completed).length / todos.length) * 100) || 0}%
                 </div>
                 <div className="text-sm text-muted-foreground">Completion Rate</div>
               </CardContent>
-            </Card>
+            </IOSCard>
           </div>
 
           {/* Tag Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             {TAGS.map((tagInfo) => (
-              <Card key={tagInfo.value} className="bg-background/60 backdrop-blur-sm border-border/40">
-                <CardContent className="p-4">
+              <IOSCard key={tagInfo.value} variant="glass" className="bg-background/60 backdrop-blur-sm border-border/40">
+                <IOSCardContent className="p-4">
                   <div className="flex items-center space-x-3">
                     <tagInfo.icon className="h-5 w-5 text-muted-foreground" />
                     <div className="flex-grow">
@@ -338,24 +339,24 @@ export default function TodoPage() {
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-medium">
-                        {tagStats[tagInfo.value].total > 0 
+                        {tagStats[tagInfo.value].total > 0
                           ? Math.round((tagStats[tagInfo.value].completed / tagStats[tagInfo.value].total) * 100)
                           : 0}%
                       </div>
                     </div>
                   </div>
                   <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
-                    <div 
+                    <div
                       className={`h-2 rounded-full ${tagInfo.color.split(' ')[0]}`}
-                      style={{ 
-                        width: tagStats[tagInfo.value].total > 0 
-                          ? `${(tagStats[tagInfo.value].completed / tagStats[tagInfo.value].total) * 100}%` 
-                          : '0%' 
+                      style={{
+                        width: tagStats[tagInfo.value].total > 0
+                          ? `${(tagStats[tagInfo.value].completed / tagStats[tagInfo.value].total) * 100}%`
+                          : '0%'
                       }}
                     ></div>
                   </div>
-                </CardContent>
-              </Card>
+                </IOSCardContent>
+              </IOSCard>
             ))}
           </div>
 
@@ -403,12 +404,12 @@ export default function TodoPage() {
           {/* Todo List */}
           <div className="space-y-3">
             {filteredTodos.length === 0 ? (
-              <Card className="bg-background/60 backdrop-blur-sm border-border/40">
+              <IOSCard variant="glass" className="h-full flex justify-center items-center">
                 <CardContent className="text-center py-12">
                   <SquareCheck className="h-16 w-16 mx-auto mb-4 opacity-50" />
                   <h3 className="text-xl font-semibold mb-2">No tasks yet</h3>
                   <p className="text-muted-foreground mb-6">Add your first parenting task to get started</p>
-                  <Button 
+                  <Button
                     onClick={() => setIsDialogOpen(true)}
                     className="bg-gradient-to-r from-sky-600 to-amber-600 hover:from-sky-700 hover:to-amber-700"
                   >
@@ -416,7 +417,7 @@ export default function TodoPage() {
                     Add First Task
                   </Button>
                 </CardContent>
-              </Card>
+              </IOSCard>
             ) : (
               filteredTodos.map((todo) => {
                 const tagInfo = getTagInfo(todo.tag);
@@ -427,24 +428,22 @@ export default function TodoPage() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3 }}
                   >
-                    <Card className={`bg-background/60 backdrop-blur-sm border-border/40 transition-all duration-200 ${
-                      todo.completed ? 'opacity-75' : ''
-                    }`}>
-                      <CardContent className="p-4">
+                    <IOSCard variant="glass" className={`bg-background/60 backdrop-blur-sm border-border/40 transition-all duration-200 ${todo.completed ? 'opacity-75' : ''
+                      }`}>
+                      <IOSCardContent className="p-4">
                         <div className="flex items-start space-x-3">
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => toggleTodo(todo.id)}
-                            className={`mt-1 p-2 h-8 w-8 rounded-full ${
-                              todo.completed 
-                                ? 'bg-green-100 text-green-600 hover:bg-green-200' 
-                                : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-                            }`}
+                            className={`mt-1 p-2 h-8 w-8 rounded-full ${todo.completed
+                              ? 'bg-green-100 text-green-600 hover:bg-green-200'
+                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                              }`}
                           >
                             {todo.completed ? <CheckCircle2 className="h-4 w-4" /> : <div className="h-4 w-4 border-2 border-gray-300 rounded-full" />}
                           </Button>
-                          
+
                           <div className="flex-grow">
                             <div className="flex items-center space-x-2 mb-2">
                               <h3 className={`font-medium ${todo.completed ? 'line-through text-muted-foreground' : ''}`}>
@@ -455,13 +454,13 @@ export default function TodoPage() {
                                 {tagInfo.label}
                               </Badge>
                             </div>
-                            
+
                             {todo.description && (
                               <p className={`text-sm ${todo.completed ? 'line-through text-muted-foreground' : 'text-muted-foreground'}`}>
                                 {todo.description}
                               </p>
                             )}
-                            
+
                             <div className="flex items-center space-x-4 mt-2 text-xs text-muted-foreground">
                               <span>Created: {todo.createdAt.toLocaleDateString()}</span>
                               {todo.completed && (
@@ -469,7 +468,7 @@ export default function TodoPage() {
                               )}
                             </div>
                           </div>
-                          
+
                           <div className="flex items-center space-x-2">
                             <Button
                               variant="ghost"
@@ -489,8 +488,8 @@ export default function TodoPage() {
                             </Button>
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
+                      </IOSCardContent>
+                    </IOSCard>
                   </motion.div>
                 );
               })
@@ -501,82 +500,84 @@ export default function TodoPage() {
 
       {/* Add/Edit Todo Dialog */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {editingTodo ? 'Edit Task' : 'Add New Task'}
-            </DialogTitle>
-            <DialogDescription>
-              {editingTodo ? 'Update your task details' : 'Add a new task to your to-do list'}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium">Title *</label>
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Enter task title..."
-                className="mt-1"
-              />
+          <DialogContent className="sm:max-w-md bg-transparent p-0">
+        <IOSCard variant="glass" className="w-full h-full p-6">
+            <DialogHeader>
+              <DialogTitle>
+                {editingTodo ? 'Edit Task' : 'Add New Task'}
+              </DialogTitle>
+              <DialogDescription>
+                {editingTodo ? 'Update your task details' : 'Add a new task to your to-do list'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Title *</label>
+                <Input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Enter task title..."
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Description</label>
+                <Textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Add task description (optional)..."
+                  className="mt-1"
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Tag</label>
+                <Select value={tag} onValueChange={setTag}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TAGS.map(tagInfo => (
+                      <SelectItem key={tagInfo.value} value={tagInfo.value}>
+                        <div className="flex items-center space-x-2">
+                          <tagInfo.icon className="h-4 w-4" />
+                          <span>{tagInfo.label}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex space-x-2 pt-4">
+                <Button
+                  onClick={() => {
+                    if (editingTodo) {
+                      updateTodo(editingTodo.id, { title: title.trim(), description: description.trim(), tag });
+                    } else {
+                      addTodo();
+                    }
+                  }}
+                  className="flex-1 bg-gradient-to-r from-sky-600 to-amber-600 hover:from-sky-700 hover:to-amber-700"
+                  disabled={!title.trim()}
+                >
+                  {editingTodo ? 'Update Task' : 'Add Task'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsDialogOpen(false);
+                    resetForm();
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
             </div>
-            
-            <div>
-              <label className="text-sm font-medium">Description</label>
-              <Textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Add task description (optional)..."
-                className="mt-1"
-                rows={3}
-              />
-            </div>
-            
-            <div>
-              <label className="text-sm font-medium">Tag</label>
-              <Select value={tag} onValueChange={setTag}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TAGS.map(tagInfo => (
-                    <SelectItem key={tagInfo.value} value={tagInfo.value}>
-                      <div className="flex items-center space-x-2">
-                        <tagInfo.icon className="h-4 w-4" />
-                        <span>{tagInfo.label}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="flex space-x-2 pt-4">
-              <Button
-                onClick={() => {
-                  if (editingTodo) {
-                    updateTodo(editingTodo.id, { title: title.trim(), description: description.trim(), tag });
-                  } else {
-                    addTodo();
-                  }
-                }}
-                className="flex-1 bg-gradient-to-r from-sky-600 to-amber-600 hover:from-sky-700 hover:to-amber-700"
-                disabled={!title.trim()}
-              >
-                {editingTodo ? 'Update Task' : 'Add Task'}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setIsDialogOpen(false);
-                  resetForm();
-                }}
-              >
-                Cancel
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
+        </IOSCard>
+          </DialogContent>
       </Dialog>
     </div>
   );

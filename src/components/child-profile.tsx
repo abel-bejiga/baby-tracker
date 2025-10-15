@@ -7,22 +7,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { IOSCard, IOSCardHeader, IOSCardTitle, IOSCardContent } from '@/components/ui/ios-card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { 
-  User, 
-  Edit, 
-  BookOpen, 
-  Brain, 
-  Calendar, 
-  Scale, 
-  Ruler, 
+import {
+  User,
+  Edit,
+  BookOpen,
+  Brain,
+  Calendar,
+  Scale,
+  Ruler,
   Heart,
   Sparkles,
   Save,
   Plus,
-  Shield
+  Shield,
+  Droplet
 } from 'lucide-react';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useNotification } from '@/hooks/use-notification';
 // import ZAI from 'z-ai-web-dev-sdk';
 
 interface ChildProfile {
@@ -69,6 +71,7 @@ export default function ChildProfile({ babyId, currentAge }: ChildProfileProps) 
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
   const [editForm, setEditForm] = useState<Partial<ChildProfile>>({});
+  const { success, info, error } = useNotification()
 
   useEffect(() => {
     const profileRef = doc(db, 'babies', babyId, 'profile', 'main');
@@ -79,8 +82,8 @@ export default function ChildProfile({ babyId, currentAge }: ChildProfileProps) 
           id: doc.id,
           ...data,
           birthDate: data.birthDate,
-          createdAt: data.createdAt.toDate(),
-          updatedAt: data.updatedAt.toDate()
+          createdAt: data?.createdAt?.toDate() || null,
+          updatedAt: data?.updatedAt?.toDate()
         } as ChildProfile);
         setEditForm(data);
       }
@@ -97,7 +100,7 @@ export default function ChildProfile({ babyId, currentAge }: ChildProfileProps) 
     try {
       const contentRef = doc(db, 'babies', babyId, 'educationalContent', 'current');
       const docSnap = await getDoc(contentRef);
-      
+
       if (docSnap.exists()) {
         const data = docSnap.data();
         setEducationalContent(data.content || []);
@@ -146,7 +149,7 @@ export default function ChildProfile({ babyId, currentAge }: ChildProfileProps) 
           tags: ['sleep', 'routine', 'rest']
         }
       ];
-      
+
       const educationalContentWithIds: EducationalContent[] = mockContent.map((item: any, index: number) => ({
         id: `content-${Date.now()}-${index}`,
         ...item,
@@ -155,22 +158,27 @@ export default function ChildProfile({ babyId, currentAge }: ChildProfileProps) 
       }));
 
       setEducationalContent(educationalContentWithIds);
-      
+
       // Save to Firestore
       await setDoc(doc(db, 'babies', babyId, 'educationalContent', 'current'), {
         content: educationalContentWithIds,
         generatedAt: new Date(),
         ageMonths: currentAge
       });
-    } catch (error) {
-      console.error('Error generating educational content:', error);
+    } catch (err) {
+      console.error('Error generating educational content:', err);
+      error(`Error generating educational content:', ${(err as Error).message}`)
     } finally {
       setIsGeneratingContent(false);
     }
   };
 
-  const handleSaveProfile = async () => {
-    if (!profile) return;
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    // if (!profile) {
+    //   error('Profile data is not loaded yet.');
+    //   return;
+    // };
 
     try {
       const updatedProfile = {
@@ -181,8 +189,10 @@ export default function ChildProfile({ babyId, currentAge }: ChildProfileProps) 
 
       await setDoc(doc(db, 'babies', babyId, 'profile', 'main'), updatedProfile);
       setIsEditDialogOpen(false);
-    } catch (error) {
-      console.error('Error saving profile:', error);
+      success('Profile saved successfully.');
+    } catch (err) {
+      console.error('Error saving profile:', err);
+      error('Error saving profile?. Please try again.', (err as Error).message ?? "");
     }
   };
 
@@ -218,204 +228,204 @@ export default function ChildProfile({ babyId, currentAge }: ChildProfileProps) 
     }
   };
 
-  if (!profile) {
-    return (
-      <IOSCard variant="glass" intensity="medium">
-        <IOSCardContent className="text-center py-8">
-          <User className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p className="text-muted-foreground">No profile set up yet</p>
-          <Button className="mt-4" onClick={() => setIsEditDialogOpen(true)}>
-            Create Profile
-          </Button>
-        </IOSCardContent>
-      </IOSCard>
-    );
-  }
-  console.log(isEditDialogOpen)
+
+
+  console.log(profile, "PROFILE")
 
   return (
     <div className="space-y-6">
       {/* Child Profile Card */}
       <IOSCard variant="glass" intensity="medium">
         <IOSCardHeader>
-          <IOSCardTitle className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
+          <IOSCardTitle className={`flex items-center ${profile ? 'justify-between' : 'justify-center'}`}>
+            {profile && <div className="flex items-center space-x-2">
               <User className="h-5 w-5" />
-              <span>Child Profile</span>
-            </div>
-            <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit
+              <span>{`${profile?.name?.split(" ")[0]}'s` ?? "Child"} Profile</span>
+            </div>}
+            {!profile ?
+              // <IOSCard variant="glass" intensity="medium">
+              <IOSCardContent className="text-center py-8">
+                <User className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p className="text-muted-foreground">No profile set up yet</p>
+                <Button className="mt-4" onClick={() => setIsEditDialogOpen(true)}>
+                  Create Profile
                 </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Edit Child Profile</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="name">Full Name *</Label>
-                    <Input
-                      id="name"
-                      value={editForm.name || ''}
-                      onChange={(e) => setEditForm({...editForm, name: e.target.value})}
-                      placeholder="Enter child's name"
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="birthDate">Birth Date *</Label>
-                    <Input
-                      id="birthDate"
-                      type="date"
-                      value={editForm.birthDate || ''}
-                      onChange={(e) => setEditForm({...editForm, birthDate: e.target.value})}
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="gender">Gender</Label>
-                    <Select value={editForm.gender} onValueChange={(value) => setEditForm({...editForm, gender: value as any})}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select gender" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="male">Male</SelectItem>
-                        <SelectItem value="female">Female</SelectItem>
-                        <SelectItem value="other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="birthWeight">Birth Weight (kg)</Label>
-                      <Input
-                        id="birthWeight"
-                        type="number"
-                        step="0.01"
-                        value={editForm.birthWeight || ''}
-                        onChange={(e) => setEditForm({...editForm, birthWeight: parseFloat(e.target.value)})}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="birthHeight">Birth Height (cm)</Label>
-                      <Input
-                        id="birthHeight"
-                        type="number"
-                        step="0.1"
-                        value={editForm.birthHeight || ''}
-                        onChange={(e) => setEditForm({...editForm, birthHeight: parseFloat(e.target.value)})}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="bloodType">Blood Type</Label>
-                    <Input
-                      id="bloodType"
-                      value={editForm.bloodType || ''}
-                      onChange={(e) => setEditForm({...editForm, bloodType: e.target.value})}
-                      placeholder="e.g., A+, O-, etc."
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="pediatrician">Pediatrician</Label>
-                    <Input
-                      id="pediatrician"
-                      value={editForm.pediatrician || ''}
-                      onChange={(e) => setEditForm({...editForm, pediatrician: e.target.value})}
-                      placeholder="Dr. Name"
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="allergies">Allergies (comma-separated)</Label>
-                    <Input
-                      id="allergies"
-                      value={editForm.allergies?.join(', ') || ''}
-                      onChange={(e) => setEditForm({...editForm, allergies: e.target.value.split(',').map(a => a.trim()).filter(a => a)})}
-                      placeholder="e.g., Peanuts, Dairy, Eggs"
-                    />
-                  </div>
-                  
-                  <div>
-                    <Label htmlFor="notes">Notes</Label>
-                    <Textarea
-                      id="notes"
-                      value={editForm.notes || ''}
-                      onChange={(e) => setEditForm({...editForm, notes: e.target.value})}
-                      placeholder="Any additional notes..."
-                      rows={3}
-                    />
-                  </div>
-                  
-                  <Button onClick={handleSaveProfile} className="w-full">
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Profile
+              </IOSCardContent>
+
+              :
+              <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className='ml-2' size="sm">
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit
                   </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Edit Child Profile</DialogTitle>
+                  </DialogHeader>
+                  <form onSubmit={handleSaveProfile} className="space-y-4">
+                    <div>
+                      <Label htmlFor="name">Full Name *</Label>
+                      <Input
+                        id="name"
+                        value={editForm.name || ''}
+                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                        placeholder="Enter child's name"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="birthDate">Birth Date *</Label>
+                      <Input
+                        id="birthDate"
+                        type="date"
+                        value={editForm.birthDate || ''}
+                        onChange={(e) => setEditForm({ ...editForm, birthDate: e.target.value })}
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="gender">Gender</Label>
+                      <Select value={editForm.gender} onValueChange={(value) => setEditForm({ ...editForm, gender: value as any })}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="male">Male</SelectItem>
+                          <SelectItem value="female">Female</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="birthWeight">Birth Weight (kg)</Label>
+                        <Input
+                          id="birthWeight"
+                          type="number"
+                          step="0.01"
+                          value={editForm.birthWeight || ''}
+                          onChange={(e) => setEditForm({ ...editForm, birthWeight: parseFloat(e.target.value) })}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="birthHeight">Birth Height (cm)</Label>
+                        <Input
+                          id="birthHeight"
+                          type="number"
+                          step="0.1"
+                          value={editForm.birthHeight || ''}
+                          onChange={(e) => setEditForm({ ...editForm, birthHeight: parseFloat(e.target.value) })}
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="bloodType">Blood Type</Label>
+                      <Input
+                        id="bloodType"
+                        value={editForm.bloodType || ''}
+                        onChange={(e) => setEditForm({ ...editForm, bloodType: e.target.value })}
+                        placeholder="e.g., A+, O-, etc."
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="pediatrician">Pediatrician</Label>
+                      <Input
+                        id="pediatrician"
+                        value={editForm.pediatrician || ''}
+                        onChange={(e) => setEditForm({ ...editForm, pediatrician: e.target.value })}
+                        placeholder="Dr. Name"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="allergies">Allergies (comma-separated)</Label>
+                      <Input
+                        id="allergies"
+                        value={editForm.allergies?.join(', ') || ''}
+                        onChange={(e) => setEditForm({ ...editForm, allergies: e.target.value.split(',').map(a => a.trim()).filter(a => a) })}
+                        placeholder="e.g., Peanuts, Dairy, Eggs"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="notes">Notes</Label>
+                      <Textarea
+                        id="notes"
+                        value={editForm.notes || ''}
+                        onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                        placeholder="Any additional notes..."
+                        rows={3}
+                      />
+                    </div>
+
+                    <Button type='submit' className="w-full">
+                      <Save className="h-4 w-4 mr-2" />
+                      Save Profile
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            }
           </IOSCardTitle>
         </IOSCardHeader>
-        <IOSCardContent>
+        {profile && <IOSCardContent>
           <div className="space-y-4">
             <div className="flex items-center space-x-4">
               <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
                 <User className="h-8 w-8 text-white" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold">{profile.name}</h3>
+                <h3 className="text-lg font-semibold">{profile?.name}</h3>
                 <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-                  <span>{profile.gender}</span>
+                  <span>{profile?.gender}</span>
                   <span>•</span>
-                  <span>{calculateAge(profile.birthDate)}</span>
+                  <span>{calculateAge(profile?.birthDate)}</span>
                 </div>
               </div>
             </div>
-            
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center p-3 bg-background/40 rounded-lg">
                 <Scale className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
                 <p className="text-xs text-muted-foreground">Birth Weight</p>
-                <p className="font-medium">{profile.birthWeight} kg</p>
+                <p className="font-medium">{Math.round(profile?.birthWeight)} kg</p>
               </div>
               <div className="text-center p-3 bg-background/40 rounded-lg">
                 <Ruler className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
                 <p className="text-xs text-muted-foreground">Birth Height</p>
-                <p className="font-medium">{profile.birthHeight} cm</p>
+                <p className="font-medium">{Math.round(profile?.birthHeight)} cm</p>
               </div>
               <div className="text-center p-3 bg-background/40 rounded-lg">
-                <Calendar className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
+                <Droplet className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
                 <p className="text-xs text-muted-foreground">Blood Type</p>
-                <p className="font-medium">{profile.bloodType || 'Not set'}</p>
+                <p className="font-medium">{profile?.bloodType || 'Not set'}</p>
               </div>
               <div className="text-center p-3 bg-background/40 rounded-lg">
                 <Heart className="h-4 w-4 mx-auto mb-1 text-muted-foreground" />
                 <p className="text-xs text-muted-foreground">Allergies</p>
-                <p className="font-medium">{profile.allergies.length || 'None'}</p>
+                <p className="font-medium">{profile?.allergies?.length || 'None'}</p>
               </div>
             </div>
-            
-            {profile.pediatrician && (
+
+            {profile?.pediatrician && (
               <div className="p-3 bg-background/40 rounded-lg">
                 <p className="text-sm font-medium mb-1">Pediatrician</p>
-                <p className="text-sm text-muted-foreground">{profile.pediatrician}</p>
+                <p className="text-sm text-muted-foreground">{profile?.pediatrician}</p>
               </div>
             )}
-            
-            {profile.notes && (
+
+            {profile?.notes && (
               <div className="p-3 bg-background/40 rounded-lg">
                 <p className="text-sm font-medium mb-1">Notes</p>
-                <p className="text-sm text-muted-foreground">{profile.notes}</p>
+                <p className="text-sm text-muted-foreground">{profile?.notes}</p>
               </div>
             )}
           </div>
-        </IOSCardContent>
+        </IOSCardContent>}
       </IOSCard>
 
       {/* Educational Content Card */}
@@ -426,9 +436,9 @@ export default function ChildProfile({ babyId, currentAge }: ChildProfileProps) 
               <BookOpen className="h-5 w-5" />
               <span>Educational Content</span>
             </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               onClick={generateEducationalContent}
               disabled={isGeneratingContent}
             >
